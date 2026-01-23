@@ -28,7 +28,29 @@ const sendMenu = (chatId) => {
         }
     });
 };
+bot.onText(/\/clear/, async (msg) => {
+    if (msg.from.id !== adminID) return;
 
+    const chatId = msg.chat.id;
+    const lastMsgId = msg.message_id;
+
+    bot.sendMessage(chatId, "🧹 *Запущена зачистка терминала...*", { parse_mode: "Markdown" })
+        .then(async (sentMsg) => {
+            // Удаляем последние 100 сообщений
+            for (let i = 0; i < 100; i++) {
+                try {
+                    await bot.deleteMessage(chatId, lastMsgId - i);
+                } catch (e) {
+                    // Игнорируем ошибки (если сообщение уже удалено или слишком старое)
+                }
+            }
+            
+            // Удаляем само сообщение о зачистке через 2 секунды
+            setTimeout(() => {
+                bot.deleteMessage(chatId, sentMsg.message_id).catch(() => {});
+            }, 2000);
+        });
+});
 bot.onText(/\/start/, (msg) => {
     if (msg.from.id !== adminID) return;
     sendMenu(msg.chat.id);
@@ -84,6 +106,7 @@ async function changeStatus(chatId, status) {
 }
 
 bot.on('polling_error', (err) => console.log("Polling Error:", err.code));
+
 
 
 
