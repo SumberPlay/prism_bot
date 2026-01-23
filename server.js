@@ -10,77 +10,77 @@ const adminID = 5681992508;
 // --- ЗАГЛУШКА ДЛЯ RENDER ---
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('P.R.I.S.M. Bot is Running');
+    res.end('P.R.I.S.M. Control Hub is Online');
 }).listen(process.env.PORT || 3000);
 
-// --- ЛОГИКА БОТА ---
 const bot = new TelegramBot(token, {polling: true});
+console.log("🚀 Центр управления P.R.I.S.M. запущен...");
 
-console.log("🚀 Система P.R.I.S.M. запущена...");
-
-// Функция для вызова меню
+// Функция главного меню
 const sendMenu = (chatId) => {
-    bot.sendMessage(chatId, "🛰️ Панель управления P.R.I.S.M. активна:", {
+    bot.sendMessage(chatId, "🛠️ ПАНЕЛЬ УПРАВЛЕНИЯ СТАТУСАМИ:", {
         reply_markup: {
             keyboard: [
-                ['🟢 СТАБИЛИЗИРОВАТЬ', '🔴 КРИТИЧЕСКИЙ РЕЖИМ'],
-                ['📊 Проверить систему']
+                ['🟢 СТАБИЛЬНО', '🔴 КРИТИЧЕСКИЙ'],
+                ['📊 ТЕКУЩЕЕ СОСТОЯНИЕ']
             ],
             resize_keyboard: true
         }
     });
 };
 
-// Команда /start
 bot.onText(/\/start/, (msg) => {
-    if (msg.from.id !== adminID) return bot.sendMessage(msg.chat.id, "⛔ ДОСТУП ЗАПРЕЩЕН.");
+    if (msg.from.id !== adminID) return;
     sendMenu(msg.chat.id);
 });
 
-// Старая логика команд через текст (на всякий случай оставляем)
-bot.onText(/\/status (stable|red)/, async (msg, match) => {
+// ГИБКАЯ КОМАНДА: /warn [цвет] [текст]
+// Цвета: yellow, blue, purple
+bot.onText(/\/warn (yellow|blue|purple) (.+)/, async (msg, match) => {
     if (msg.from.id !== adminID) return;
-    await changeStatus(msg.chat.id, match[1]);
+    const colorType = match[1];
+    const text = match[2];
+    
+    // Маппинг цветов для таблицы
+    const colors = {
+        yellow: '#ffd700',
+        blue: '#00d9ff',
+        purple: '#bb00ff'
+    };
+
+    try {
+        const encodedText = encodeURIComponent(text.toUpperCase());
+        const colorHex = encodeURIComponent(colors[colorType]);
+        await axios.get(`${scriptURL}?set=custom&text=${encodedText}&color=${colorHex}`);
+        bot.sendMessage(msg.chat.id, `📡 Трансляция запущена: [${colorType.toUpperCase()}] ${text}`);
+    } catch (e) {
+        bot.sendMessage(msg.chat.id, "❌ Ошибка передачи данных.");
+    }
 });
 
-// Новая логика через кнопки
+// Обработка кнопок и команд статуса
 bot.on('message', async (msg) => {
-    if (msg.from.id !== adminID) return;
-    if (!msg.text) return;
+    if (msg.from.id !== adminID || !msg.text) return;
 
-    if (msg.text === '🟢 СТАБИЛИЗИРОВАТЬ') {
+    if (msg.text === '🟢 СТАБИЛЬНО' || msg.text === '/status stable') {
         await changeStatus(msg.chat.id, 'stable');
     } 
-    else if (msg.text === '🔴 КРИТИЧЕСКИЙ РЕЖИМ') {
+    else if (msg.text === '🔴 КРИТИЧЕСКИЙ' || msg.text === '/status red') {
         await changeStatus(msg.chat.id, 'red');
     }
-    else if (msg.text === '📊 Проверить систему') {
-        bot.sendMessage(msg.chat.id, "🔍 Мониторинг активен. Проверьте визуализацию на сайте.");
+    else if (msg.text === '📊 ТЕКУЩЕЕ СОСТОЯНИЕ') {
+        bot.sendMessage(msg.chat.id, "🔍 Система активна. Все терминалы синхронизированы.");
     }
 });
 
-// Общая функция для смены статуса
 async function changeStatus(chatId, status) {
     try {
         await axios.get(`${scriptURL}?set=${status}`);
-        const message = status === 'red' 
-            ? "⚠️ ВНИМАНИЕ! ОБЪЯВЛЕН РЕЖИМ КРАСНОЙ УГРОЗЫ!" 
-            : "✅ СИТУАЦИЯ СТАБИЛИЗИРОВАНА. РЕЖИМ СТАБИЛЕН.";
-        bot.sendMessage(chatId, message);
-        console.log(`Статус изменен на: ${status}`);
-    } catch (error) {
-        console.error("Ошибка связи:", error.message);
-        bot.sendMessage(chatId, "❌ ОШИБКА СВЯЗИ С СЕРВЕРОМ.");
+        const msg = status === 'red' ? "⚠️ РЕЖИМ КРАСНОЙ УГРОЗЫ АКТИВИРОВАН!" : "✅ СИСТЕМА ПЕРЕВЕДЕНА В ШТАТНЫЙ РЕЖИМ.";
+        bot.sendMessage(chatId, msg);
+    } catch (e) {
+        bot.sendMessage(chatId, "❌ ОШИБКА СВЯЗИ.");
     }
 }
 
-// Обработка ошибок
-bot.on('polling_error', (error) => {
-    if (error.code === 'ETELEGRAM' && error.response.body.error_code === 409) {
-        console.log("⚠️ Конфликт Polling. Ожидайте перезапуска Render...");
-    } else {
-        console.log("Ошибка Polling:", error.code);
-    }
-});
-
-
+bot.on('polling_error', (err) => console.log("Polling Error:", err.code));
