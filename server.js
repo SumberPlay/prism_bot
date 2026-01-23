@@ -4,7 +4,7 @@ const http = require('http');
 
 // --- НАСТРОЙКИ ---
 const token = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
-const scriptURL = 'https://script.google.com/macros/s/AKfycbzR_tCULoFYleId9emJZ0FAw47s1256n-7Zht0vYmVEyZty7nzds077zFMDLvaiTzV-/exec';
+const scriptURL = 'https://script.google.com/macros/s/AKfycbxh6EOtUV5zkx9SqR8sc1wHQIn9sAuaoOcfy5RqWz2DLRTkkQ0CGWo8o6Eo47tZWvj_XQ/exec';
 const adminID = 5681992508; 
 
 // --- ЗАГЛУШКА ДЛЯ RENDER ---
@@ -84,3 +84,4 @@ async function changeStatus(chatId, status) {
 }
 
 bot.on('polling_error', (err) => console.log("Polling Error:", err.code));
+
