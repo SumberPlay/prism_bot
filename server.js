@@ -4,90 +4,118 @@ const cors = require('cors');
 const axios = require('axios');
 
 // === НАСТРОЙКИ ===
-const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
-const ADMIN_CHAT_ID = '5681992508';
-const SERVER_URL = 'https://prism-bot.onrender.com/'; 
+const BOT_TOKEN = process.env.7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI || 'ТВОЙ_ТОКЕН';
+const ADMIN_CHAT_ID = process.env.5681992508 || 'ТВОЙ_ID';
+const SERVER_URL = 'https://prism-bot.onrender.com'; 
 
 const app = express();
 const bot = new Telegraf(BOT_TOKEN);
 
+// Глобальное состояние системы
 let currentSystemState = "NORMAL";
 let customLabel = "ШТАТНЫЙ РЕЖИМ";
+let incidentReason = ""; // Хранилище для причины тревоги
+let awaitingReason = false; // Флаг режима ожидания ввода текста
 
 // === MIDDLEWARE ===
-app.use(cors()); // КРИТИЧЕСКИ ВАЖНО для связи между разными хостингами
+app.use(cors());
 app.use(express.json());
 
-// === МАРШРУТЫ (Только API) ===
+// === API ДЛЯ САЙТА ===
 
-// Вместо ошибки - простое сообщение
+// Корневой маршрут (заглушка для Render)
 app.get('/', (req, res) => {
-    res.status(200).send('P.R.I.S.M. API Server is RUNNING');
+    res.send('P.R.I.S.M. Control Unit: ONLINE');
 });
 
-// Сайт с другого хостинга будет запрашивать это:
+// Статус для всех страниц (Public & Staff)
 app.get('/status', (req, res) => {
     res.json({
         state: currentSystemState,
         label: customLabel,
-        color: currentSystemState === "RED" ? "#ff3300" : "#00ffcc"
+        color: currentSystemState === "RED" ? "#ff4444" : "#00ffcc",
+        reason: incidentReason
     });
 });
 
-// Прием рапортов
+// Прием рапортов из staff.html
 app.post('/send-report', (req, res) => {
     const { user, subject, text, timestamp } = req.body;
-    const report = `📝 **НОВЫЙ РАПОРТ**\n👤 От: ${user}\n📋 Тема: ${subject}\n⏰ Время: ${timestamp}\n\n${text}`;
+    const report = `📝 **НОВЫЙ РАПОРТ P.R.I.S.M.**\n👤 От: ${user}\n📋 Тема: ${subject}\n⏰ Время: ${timestamp}\n\nСообщение:\n${text}`;
     
     bot.telegram.sendMessage(ADMIN_CHAT_ID, report, { parse_mode: 'Markdown' })
         .then(() => res.json({ success: true }))
-        .catch(() => res.status(500).json({ success: false }));
+        .catch(err => {
+            console.error('Ошибка отправки в TG:', err);
+            res.status(500).json({ success: false });
+        });
 });
 
-// === КНОПКИ БОТА ===
+// === ЛОГИКА БОТА ===
+
 const mainMenu = Markup.keyboard([
     ['🔴 АКТИВИРОВАТЬ RED CODE', '🟢 ВЕРНУТЬ STABLE'],
     ['📝 ИЗМЕНИТЬ СТАТУС', '📊 ТЕКУЩИЙ СТАТУС']
 ]).resize();
 
-bot.start((ctx) => ctx.reply('🛡️ Управление P.R.I.S.M. активно', mainMenu));
-
-bot.hears('🔴 АКТИВИРОВАТЬ RED CODE', (ctx) => {
-    currentSystemState = "RED";
-    customLabel = "КРИТИЧЕСКАЯ УГРОЗА";
-    ctx.reply('🚨 RED CODE активирован!');
+bot.start((ctx) => {
+    ctx.reply('🛡️ Терминал P.R.I.S.M. активен. Ожидаю команд.', mainMenu);
 });
 
+// Нажатие на Красную Кнопку
+bot.hears('🔴 АКТИВИРОВАТЬ RED CODE', (ctx) => {
+    awaitingReason = true;
+    ctx.reply('🚨 РЕЖИМ ТРЕВОГИ ИНИЦИИРОВАН.\nВведите причину угрозы для терминалов сотрудников (текстом):');
+});
+
+// Нажатие на Зеленую Кнопку
 bot.hears('🟢 ВЕРНУТЬ STABLE', (ctx) => {
     currentSystemState = "NORMAL";
     customLabel = "ШТАТНЫЙ РЕЖИМ";
-    ctx.reply('✅ Система стабилизирована.');
+    incidentReason = ""; 
+    awaitingReason = false;
+    ctx.reply('✅ Система стабилизирована. Причина сброшена.', mainMenu);
 });
 
+bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
+    ctx.reply(`Состояние: ${currentSystemState}\nТекст: ${customLabel}\nПричина: ${incidentReason || "Нет"}`);
+});
+
+bot.hears('📝 ИЗМЕНИТЬ СТАТУС', (ctx) => {
+    ctx.reply('Используйте команду: /setstatus ТЕКСТ');
+});
+
+// Команда для ручной смены текста статуса (не тревоги)
 bot.command('setstatus', (ctx) => {
     const text = ctx.message.text.split(' ').slice(1).join(' ');
     if (!text) return ctx.reply('Используй: /setstatus ТЕКСТ');
     customLabel = text.toUpperCase();
-    ctx.reply(`✅ Статус: ${customLabel}`);
+    ctx.reply(`✅ Статус обновлен: ${customLabel}`);
 });
 
-bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
-    ctx.reply(`Состояние: ${currentSystemState}\nТекст: ${customLabel}`);
+// ОБРАБОТЧИК ТЕКСТА (Для ввода причины тревоги)
+bot.on('text', (ctx) => {
+    if (awaitingReason) {
+        currentSystemState = "RED";
+        customLabel = "КРИТИЧЕСКАЯ УГРОЗА";
+        incidentReason = ctx.message.text; // Записываем причину
+        awaitingReason = false;
+        ctx.reply(`🚨 СТАТУС УСТАНОВЛЕН!\nПричина: ${incidentReason}\n\nВсе терминалы сотрудников получили уведомление.`);
+    }
 });
 
-bot.hears('📝 ИЗМЕНИТЬ СТАТУС', (ctx) => {
-    ctx.reply('Отправь команду: `/setstatus ТВОЙ ТЕКСТ`', { parse_mode: 'Markdown' });
-});
-
-// === АНТИ-СОН ===
+// === АНТИ-СОН (Keep-Alive) ===
 setInterval(() => {
-    axios.get(SERVER_URL).catch(() => {});
-}, 10 * 60 * 1000);
+    axios.get(SERVER_URL).catch(() => console.log('Ping OK'));
+}, 10 * 60 * 1000); // 10 минут
 
-const PORT = process.env.PORT || 3000;
+// === ЗАПУСК ===
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`API Server started on port ${PORT}`);
+    console.log(`P.R.I.S.M. Server started on port ${PORT}`);
     bot.launch();
 });
 
-
+// Остановка
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
