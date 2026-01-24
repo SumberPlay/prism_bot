@@ -4,9 +4,9 @@ const cors = require('cors');
 const axios = require('axios');
 
 // === НАСТРОЙКИ ===
-const BOT_TOKEN = 'ТВОЙ_ТОКЕН';
-const ADMIN_CHAT_ID = 'ТВОЙ_ID';
-const SERVER_URL = 'https://твой-адрес-на-render.onrender.com'; 
+const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
+const ADMIN_CHAT_ID = '5681992508';
+const SERVER_URL = 'https://prism-bot.onrender.com/'; 
 
 const app = express();
 const bot = new Telegraf(BOT_TOKEN);
@@ -89,3 +89,4 @@ app.listen(PORT, () => {
     console.log(`API Server started on port ${PORT}`);
     bot.launch();
 });
+
