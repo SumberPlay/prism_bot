@@ -1,112 +1,101 @@
-const TelegramBot = require('node-telegram-bot-api');
-const axios = require('axios');
-const http = require('http');
+const express = require('express');
+const { Telegraf, Markup } = require('telegraf');
+const cors = require('cors');
 
-// --- НАСТРОЙКИ ---
-const token = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
-const scriptURL = 'https://script.google.com/macros/s/AKfycbyus0-Ji2zZY9QRsnX1P2iuANunJbBntS7FOVWimM_ZHf0po7GNajCC44zpeiRMMfpu9g/exec';
-const adminID = 5681992508; 
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-// --- ЗАГЛУШКА ДЛЯ RENDER ---
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('P.R.I.S.M. Control Hub is Online');
-}).listen(process.env.PORT || 3000);
+// --- НАСТРОЙКИ (ЗАПОЛНИ ИХ!) ---
+const BOT_TOKEN = 'ТВОЙ_ТОКЕН_ИЗ_BOTFATHER'; 
+const RENDER_URL = 'https://твой-адрес-на-render.onrender.com'; 
+const SECRET_PATH = `/webhook/${BOT_TOKEN}`;
 
-const bot = new TelegramBot(token, {polling: true});
-console.log("🚀 Центр управления P.R.I.S.M. запущен...");
+const bot = new Telegraf(BOT_TOKEN);
 
-// Функция главного меню
-const sendMenu = (chatId) => {
-    bot.sendMessage(chatId, "🛠️ ПАНЕЛЬ УПРАВЛЕНИЯ СТАТУСАМИ:", {
-        reply_markup: {
-            keyboard: [
-                ['🟢 СТАБИЛЬНО', '🔴 КРИТИЧЕСКИЙ'],
-                ['📊 ТЕКУЩЕЕ СОСТОЯНИЕ']
-            ],
-            resize_keyboard: true
-        }
-    });
+// --- ПАМЯТЬ СИСТЕМЫ ---
+let adminChatId = null; 
+let systemState = { state: "STABLE", label: "LEVEL: NORMAL", color: "#00ffcc" };
+let reports = [];
+let messageHistory = []; 
+
+// Запоминаем ID сообщений для удаления
+const trackMsg = (msg) => { if (msg && msg.message_id) messageHistory.push(msg.message_id); };
+
+// --- ЛОГИКА БОТА ---
+const mainMenu = Markup.keyboard([
+    ['🟢 STABLE', '🔴 RED'],
+    ['📝 Последние рапорты', '⚙️ Кастомный статус'],
+    ['🧹 Очистить всё']
+]).resize();
+
+bot.start(async (ctx) => {
+    adminChatId = ctx.chat.id;
+    const m = await ctx.reply('Система P.R.I.S.M. онлайн. Жду приказов, Советник.', mainMenu);
+    trackMsg(m);
+});
+
+bot.hears('🟢 STABLE', async (ctx) => {
+    systemState = { state: "STABLE", label: "LEVEL: NORMAL", color: "#00ffcc" };
+    const m = await ctx.reply('✅ Статус: ШТАТНЫЙ');
+    trackMsg(m);
+});
+
+bot.hears('🔴 RED', async (ctx) => {
+    systemState = { state: "RED", label: "CRITICAL ERROR", color: "#ff4444" };
+    const m = await ctx.reply('⚠️ ВНИМАНИЕ: АКТИВИРОВАН КРИТИЧЕСКИЙ РЕЖИМ!');
+    trackMsg(m);
+});
+
+bot.command('custom', async (ctx) => {
+    const args = ctx.message.text.split(' ').slice(1);
+    if (args.length < 2) return;
+    systemState = { state: "CUSTOM", label: args[0].toUpperCase(), color: args[1] };
+    const m = await ctx.reply(`⚙️ Статус изменен на: ${args[0]}`);
+    trackMsg(m);
+});
+
+bot.hears('📝 Последние рапорты', async (ctx) => {
+    let text = reports.length === 0 ? 'Архив пуст.' : 'ПОСЛЕДНИЕ РАПОРТЫ:\n\n' + reports.map((r, i) => `${i+1}. [${r.uid}] ${r.text}`).join('\n\n');
+    const m = await ctx.reply(text);
+    trackMsg(m);
+});
+
+// Команда очистки чата и памяти
+const clearAll = async (ctx) => {
+    if (ctx.chat.id !== adminChatId) return;
+    for (const msgId of messageHistory) {
+        await ctx.deleteMessage(msgId).catch(() => {});
+    }
+    messageHistory = [];
+    reports = [];
+    const m = await ctx.reply('🧹 Система очищена. Все логи и сообщения удалены.', mainMenu);
+    trackMsg(m);
 };
-bot.onText(/\/clear/, async (msg) => {
-    if (msg.from.id !== adminID) return;
 
-    const chatId = msg.chat.id;
-    const lastMsgId = msg.message_id;
+bot.command('clear', clearAll);
+bot.hears('🧹 Очистить всё', clearAll);
 
-    bot.sendMessage(chatId, "🧹 *Запущена зачистка терминала...*", { parse_mode: "Markdown" })
-        .then(async (sentMsg) => {
-            // Удаляем последние 100 сообщений
-            for (let i = 0; i < 100; i++) {
-                try {
-                    await bot.deleteMessage(chatId, lastMsgId - i);
-                } catch (e) {
-                    // Игнорируем ошибки (если сообщение уже удалено или слишком старое)
-                }
-            }
-            
-            // Удаляем само сообщение о зачистке через 2 секунды
-            setTimeout(() => {
-                bot.deleteMessage(chatId, sentMsg.message_id).catch(() => {});
-            }, 2000);
-        });
-});
-bot.onText(/\/start/, (msg) => {
-    if (msg.from.id !== adminID) return;
-    sendMenu(msg.chat.id);
+// --- API ДЛЯ САЙТА ---
+app.get('/status', (req, res) => res.json(systemState));
+
+app.post('/report', async (req, res) => {
+    const { uid, text } = req.body;
+    const newReport = { uid: uid || "Incognito", text: text, time: new Date().toLocaleTimeString() };
+    reports.unshift(newReport);
+    if (reports.length > 10) reports.pop();
+
+    if (adminChatId) {
+        const m = await bot.telegram.sendMessage(adminChatId, `📥 **РАПОРТ**\n👤 От: ${newReport.uid}\n📝 ${newReport.text}`, { parse_mode: 'Markdown' });
+        trackMsg(m);
+    }
+    res.json({ success: true });
 });
 
-// ГИБКАЯ КОМАНДА: /warn [цвет] [текст]
-// Цвета: yellow, blue, purple
-bot.onText(/\/warn (yellow|blue|purple) (.+)/, async (msg, match) => {
-    if (msg.from.id !== adminID) return;
-    const colorType = match[1];
-    const text = match[2];
-    
-    // Маппинг цветов для таблицы
-    const colors = {
-        yellow: '#ffd700',
-        blue: '#00d9ff',
-        purple: '#bb00ff'
-    };
-
-    try {
-        const encodedText = encodeURIComponent(text.toUpperCase());
-        const colorHex = encodeURIComponent(colors[colorType]);
-        await axios.get(`${scriptURL}?set=custom&text=${encodedText}&color=${colorHex}`);
-        bot.sendMessage(msg.chat.id, `📡 Трансляция запущена: [${colorType.toUpperCase()}] ${text}`);
-    } catch (e) {
-        bot.sendMessage(msg.chat.id, "❌ Ошибка передачи данных.");
-    }
+// --- ЗАПУСК ---
+app.use(bot.webhookCallback(SECRET_PATH));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, async () => {
+    await bot.telegram.setWebhook(`${RENDER_URL}${SECRET_PATH}`);
+    console.log('P.R.I.S.M. Core Active');
 });
-
-// Обработка кнопок и команд статуса
-bot.on('message', async (msg) => {
-    if (msg.from.id !== adminID || !msg.text) return;
-
-    if (msg.text === '🟢 СТАБИЛЬНО' || msg.text === '/status stable') {
-        await changeStatus(msg.chat.id, 'stable');
-    } 
-    else if (msg.text === '🔴 КРИТИЧЕСКИЙ' || msg.text === '/status red') {
-        await changeStatus(msg.chat.id, 'red');
-    }
-    else if (msg.text === '📊 ТЕКУЩЕЕ СОСТОЯНИЕ') {
-        bot.sendMessage(msg.chat.id, "🔍 Система активна. Все терминалы синхронизированы.");
-    }
-});
-
-async function changeStatus(chatId, status) {
-    try {
-        await axios.get(`${scriptURL}?set=${status}`);
-        const msg = status === 'red' ? "⚠️ РЕЖИМ КРАСНОЙ УГРОЗЫ АКТИВИРОВАН!" : "✅ СИСТЕМА ПЕРЕВЕДЕНА В ШТАТНЫЙ РЕЖИМ.";
-        bot.sendMessage(chatId, msg);
-    } catch (e) {
-        bot.sendMessage(chatId, "❌ ОШИБКА СВЯЗИ.");
-    }
-}
-
-bot.on('polling_error', (err) => console.log("Polling Error:", err.code));
-
-
-
-
