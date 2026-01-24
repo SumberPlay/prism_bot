@@ -7,8 +7,8 @@ app.use(cors());
 app.use(express.json());
 
 // --- НАСТРОЙКИ (ЗАПОЛНИ ИХ!) ---
-const BOT_TOKEN = 'ТВОЙ_ТОКЕН_ИЗ_BOTFATHER'; 
-const RENDER_URL = 'https://твой-адрес-на-render.onrender.com'; 
+const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI'; 
+const RENDER_URL = 'https://prism-bot.onrender.com'; 
 const SECRET_PATH = `/webhook/${BOT_TOKEN}`;
 
 const bot = new Telegraf(BOT_TOKEN);
@@ -99,3 +99,4 @@ app.listen(PORT, async () => {
     await bot.telegram.setWebhook(`${RENDER_URL}${SECRET_PATH}`);
     console.log('P.R.I.S.M. Core Active');
 });
+
