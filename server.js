@@ -4,8 +4,9 @@ const cors = require('cors');
 const axios = require('axios');
 
 // === НАСТРОЙКИ ===
-const BOT_TOKEN = process.env.7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI || 'ТВОЙ_ТОКЕН';
-const ADMIN_CHAT_ID = process.env.5681992508 || 'ТВОЙ_ID';
+// Исправлено: токен и ID теперь передаются как строки напрямую
+const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
+const ADMIN_CHAT_ID = '5681992508';
 const SERVER_URL = 'https://prism-bot.onrender.com'; 
 
 const app = express();
@@ -14,8 +15,8 @@ const bot = new Telegraf(BOT_TOKEN);
 // Глобальное состояние системы
 let currentSystemState = "NORMAL";
 let customLabel = "ШТАТНЫЙ РЕЖИМ";
-let incidentReason = ""; // Хранилище для причины тревоги
-let awaitingReason = false; // Флаг режима ожидания ввода текста
+let incidentReason = ""; 
+let awaitingReason = false; 
 
 // === MIDDLEWARE ===
 app.use(cors());
@@ -23,12 +24,10 @@ app.use(express.json());
 
 // === API ДЛЯ САЙТА ===
 
-// Корневой маршрут (заглушка для Render)
 app.get('/', (req, res) => {
     res.send('P.R.I.S.M. Control Unit: ONLINE');
 });
 
-// Статус для всех страниц (Public & Staff)
 app.get('/status', (req, res) => {
     res.json({
         state: currentSystemState,
@@ -38,7 +37,6 @@ app.get('/status', (req, res) => {
     });
 });
 
-// Прием рапортов из staff.html
 app.post('/send-report', (req, res) => {
     const { user, subject, text, timestamp } = req.body;
     const report = `📝 **НОВЫЙ РАПОРТ P.R.I.S.M.**\n👤 От: ${user}\n📋 Тема: ${subject}\n⏰ Время: ${timestamp}\n\nСообщение:\n${text}`;
@@ -62,13 +60,11 @@ bot.start((ctx) => {
     ctx.reply('🛡️ Терминал P.R.I.S.M. активен. Ожидаю команд.', mainMenu);
 });
 
-// Нажатие на Красную Кнопку
 bot.hears('🔴 АКТИВИРОВАТЬ RED CODE', (ctx) => {
     awaitingReason = true;
-    ctx.reply('🚨 РЕЖИМ ТРЕВОГИ ИНИЦИИРОВАН.\nВведите причину угрозы для терминалов сотрудников (текстом):');
+    ctx.reply('🚨 РЕЖИМ ТРЕВОГИ ИНИЦИИРОВАН.\nВведите причину угрозы для терминалов сотрудников:');
 });
 
-// Нажатие на Зеленую Кнопку
 bot.hears('🟢 ВЕРНУТЬ STABLE', (ctx) => {
     currentSystemState = "NORMAL";
     customLabel = "ШТАТНЫЙ РЕЖИМ";
@@ -78,44 +74,44 @@ bot.hears('🟢 ВЕРНУТЬ STABLE', (ctx) => {
 });
 
 bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
-    ctx.reply(`Состояние: ${currentSystemState}\nТекст: ${customLabel}\nПричина: ${incidentReason || "Нет"}`);
+    ctx.reply(`📊 ТЕКУЩИЙ СТАТУС:\n\nСостояние: ${currentSystemState}\nТекст: ${customLabel}\nПричина: ${incidentReason || "Не указана"}`);
 });
 
 bot.hears('📝 ИЗМЕНИТЬ СТАТУС', (ctx) => {
-    ctx.reply('Используйте команду: /setstatus ТЕКСТ');
+    ctx.reply('Чтобы изменить текст статуса в мирное время, введите:\n/setstatus ВАШ ТЕКСТ');
 });
 
-// Команда для ручной смены текста статуса (не тревоги)
 bot.command('setstatus', (ctx) => {
     const text = ctx.message.text.split(' ').slice(1).join(' ');
     if (!text) return ctx.reply('Используй: /setstatus ТЕКСТ');
     customLabel = text.toUpperCase();
-    ctx.reply(`✅ Статус обновлен: ${customLabel}`);
+    ctx.reply(`✅ Статус обновлен на: ${customLabel}`);
 });
 
-// ОБРАБОТЧИК ТЕКСТА (Для ввода причины тревоги)
 bot.on('text', (ctx) => {
     if (awaitingReason) {
         currentSystemState = "RED";
         customLabel = "КРИТИЧЕСКАЯ УГРОЗА";
-        incidentReason = ctx.message.text; // Записываем причину
+        incidentReason = ctx.message.text; 
         awaitingReason = false;
-        ctx.reply(`🚨 СТАТУС УСТАНОВЛЕН!\nПричина: ${incidentReason}\n\nВсе терминалы сотрудников получили уведомление.`);
+        ctx.reply(`🚨 СТАТУС RED CODE УСТАНОВЛЕН!\nПричина: ${incidentReason}\n\nСайт и терминалы сотрудников обновлены.`, mainMenu);
     }
 });
 
-// === АНТИ-СОН (Keep-Alive) ===
+// === АНТИ-СОН ===
 setInterval(() => {
-    axios.get(SERVER_URL).catch(() => console.log('Ping OK'));
-}, 10 * 60 * 1000); // 10 минут
+    axios.get(SERVER_URL).catch(() => console.log('Keep-alive ping sent.'));
+}, 10 * 60 * 1000); 
 
 // === ЗАПУСК ===
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`P.R.I.S.M. Server started on port ${PORT}`);
-    bot.launch();
+    
+    bot.launch()
+        .then(() => console.log('Telegram Bot connected!'))
+        .catch((err) => console.error('Bot launch error:', err));
 });
 
-// Остановка
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
