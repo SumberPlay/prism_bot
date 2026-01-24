@@ -1,144 +1,92 @@
 const express = require('express');
 const { Telegraf, Markup } = require('telegraf');
 const cors = require('cors');
-const fs = require('fs');
-const crypto = require('crypto');
 
 // === НАСТРОЙКИ ===
 const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
-const ADMIN_CHAT_ID = '5681992508'; // Сюда будут падать рапорты
-const DATA_FILE = './staff.json'; 
+const ADMIN_CHAT_ID = '5681992508'; // ID для получения рапортов и логов
 
 const app = express();
 const bot = new Telegraf(BOT_TOKEN);
 
-if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify({}));
-}
-
-let currentSystemState = "NORMAL";
-let customLabel = "ШТАТНЫЙ РЕЖИМ";
-
 app.use(cors());
 app.use(express.json());
 
+// === СОСТОЯНИЕ СИСТЕМЫ ===
+let systemStatus = {
+    state: "NORMAL",
+    label: "ШТАТНЫЙ РЕЖИМ",
+    color: "#00ffcc"
+};
+
 // === API ДЛЯ САЙТА ===
 
-app.post('/api/login', (req, res) => {
-    const { uid, passwordMD5 } = req.body;
-    const db = JSON.parse(fs.readFileSync(DATA_FILE));
-    const user = db[uid.toUpperCase()];
-
-    if (user && user.pass === passwordMD5) {
-        // ДОБАВИЛ: Возвращаем роль сотрудника для отображения кнопок
-        res.json({ 
-            success: true, 
-            level: user.level, 
-            name: user.name, 
-            role: user.role || "scientific" // Если роли нет, даем базу
-        });
-    } else {
-        res.json({ success: false });
-    }
+// Получение статуса для индикаторов на сайте
+app.get('/status', (req, res) => {
+    res.json(systemStatus);
 });
 
-// Отправка рапорта с сайта в Telegram
+// Прием рапортов с сайта
 app.post('/send-report', (req, res) => {
     const { user, subject, text, timestamp } = req.body;
-    const reportMsg = `📩 **НОВЫЙ РАПОРТ**\n👤 От: ${user}\n📝 Тема: ${subject}\n🕒 Время: ${timestamp}\n\n${text}`;
+    const reportMsg = `📩 **НОВЫЙ РАПОРТ**\n━━━━━━━━━━━━━━\n👤 **От:** ${user}\n📝 **Тема:** ${subject}\n🕒 **Время:** ${timestamp}\n━━━━━━━━━━━━━━\n${text}`;
     
     bot.telegram.sendMessage(ADMIN_CHAT_ID, reportMsg, { parse_mode: 'Markdown' });
     res.json({ success: true });
 });
 
-app.get('/get-external-staff', (req, res) => {
-    const db = JSON.parse(fs.readFileSync(DATA_FILE));
-    const staffArray = Object.keys(db).map(id => ({ id, ...db[id] }));
-    res.json(staffArray);
-});
-
-app.get('/status', (req, res) => {
-    res.json({ 
-        state: currentSystemState, 
-        label: customLabel, 
-        color: currentSystemState === "RED" ? "#ff4444" : "#00ffcc" 
-    });
-});
-
-// === ЛОГИКА БОТА ===
+// === ЛОГИКА ТЕЛЕГРАМ-БОТА ===
 
 const mainMenu = Markup.keyboard([
-    ['👥 ПЕРСОНАЛ', '📊 СТАТУС'],
-    ['🔴 RED CODE', '🟢 STABLE']
+    ['🔴 RED CODE', '🟢 STABLE'],
+    ['✍️ ИЗМЕНИТЬ СТАТУС', '🧹 ОЧИСТКА'],
+    ['📊 ТЕКУЩИЙ СТАТУС']
 ]).resize();
 
-bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M.', mainMenu));
+bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активирован.', mainMenu));
 
-bot.hears('👥 ПЕРСОНАЛ', (ctx) => {
-    ctx.reply('Управление сотрудниками:\n\n' +
-              '➕ **Добавить:** `/reg ID | Пароль | Имя | Скин | Лвл | Роль | Био`\n' +
-              '🔍 **Инфо:** `/check ID`\n' +
-              '🗑️ **Удалить:** `/del ID`\n\n' +
-              '_Роли: scientific, military, council_', { parse_mode: 'Markdown' });
-});
-
-// Исправленная команда регистрации с РОЛЬЮ
-bot.command('reg', (ctx) => {
-    const text = ctx.message.text.split('/reg ')[1];
-    if (!text) return ctx.reply('Используй: /reg ID | Пароль | Имя | Скин | Лвл | Роль | Био');
-
-    const [id, pass, name, skin, level, role, bio] = text.split('|').map(s => s.trim());
-    if (!id || !pass || !name || !level || !role) {
-        return ctx.reply('❌ Ошибка! ID, Пасс, Имя, Лвл и Роль обязательны.');
-    }
-
-    const db = JSON.parse(fs.readFileSync(DATA_FILE));
-    const md5Pass = crypto.createHash('md5').update(pass).digest('hex');
-
-    db[id.toUpperCase()] = {
-        pass: md5Pass,
-        name: name,
-        skin: skin || "Steve",
-        level: parseInt(level),
-        role: role.toLowerCase(), // scientific, military, council
-        bio: bio || "Нет данных.",
-        status: "ACTIVE"
-    };
-
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
-    ctx.reply(`✅ Сотрудник [${id.toUpperCase()}] обновлен.\nРоль: ${role}\nДоступ: Lvl ${level}`);
-});
-
-bot.command('check', (ctx) => {
-    const id = ctx.message.text.split('/check ')[1]?.toUpperCase();
-    const db = JSON.parse(fs.readFileSync(DATA_FILE));
-    const user = db[id];
-    if (!user) return ctx.reply('❌ Не найден.');
-    ctx.reply(`📊 ДАННЫЕ ${id}:\n\nИмя: ${user.name}\nРоль: ${user.role}\nДоступ: ${user.level} лвл\nБио: ${user.bio}`);
-});
-
-bot.command('del', (ctx) => {
-    const id = ctx.message.text.split('/del ')[1]?.toUpperCase();
-    const db = JSON.parse(fs.readFileSync(DATA_FILE));
-    if (db[id]) {
-        delete db[id];
-        fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
-        ctx.reply(`⚠️ Аккаунт ${id} удален.`);
-    }
-});
-
-// Управление статусами
+// 1. Красный уровень
 bot.hears('🔴 RED CODE', (ctx) => {
-    currentSystemState = "RED";
-    customLabel = "🚨 ОБЪЯВЛЕН RED CODE 🚨";
-    ctx.reply('🚨 СИСТЕМА ПЕРЕВЕДЕНА В РЕЖИМ ТРЕВОГИ!');
+    systemStatus = { state: "RED", label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ", color: "#ff4444" };
+    ctx.reply('⚠️ ВНИМАНИЕ: Объявлен КРАСНЫЙ УРОВЕНЬ! Все системы переведены в режим боевой готовности.');
+    bot.telegram.sendMessage(ADMIN_CHAT_ID, "‼️ ВНИМАНИЕ: Смена режима системы на RED CODE пользователем " + ctx.from.first_name);
 });
 
+// 2. Стабилизация
 bot.hears('🟢 STABLE', (ctx) => {
-    currentSystemState = "NORMAL";
-    customLabel = "ШТАТНЫЙ РЕЖИМ";
-    ctx.reply('✅ СИТУАЦИЯ СТАБИЛИЗИРОВАНА.');
+    systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc" };
+    ctx.reply('✅ Ситуация стабилизирована. Система возвращена в штатный режим.');
+});
+
+// 3. Кастомный статус
+bot.hears('✍️ ИЗМЕНИТЬ СТАТУС', (ctx) => {
+    ctx.reply('Введите новый текст статуса командой: /set_status ТЕКСТ');
+});
+
+bot.command('set_status', (ctx) => {
+    const newLabel = ctx.message.text.split('/set_status ')[1];
+    if (!newLabel) return ctx.reply('Использование: /set_status Текст вашего статуса');
+    
+    systemStatus.label = newLabel.toUpperCase();
+    ctx.reply(`✅ Статус обновлен на: ${systemStatus.label}`);
+});
+
+// 4. Удаление чата (очистка мусора)
+bot.hears('🧹 ОЧИСТКА', async (ctx) => {
+    ctx.reply('Начинаю протокол зачистки последних 50 сообщений...');
+    for (let i = 0; i < 50; i++) {
+        try {
+            await ctx.deleteMessage(ctx.message.message_id - i).catch(() => {});
+        } catch (e) {}
+    }
+});
+
+// Инфо
+bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
+    ctx.reply(`Состояние: ${systemStatus.state}\nТекст: ${systemStatus.label}`);
 });
 
 bot.launch();
-app.listen(process.env.PORT || 10000, () => console.log('Server is running...'));
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
