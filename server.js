@@ -47,7 +47,21 @@ app.post('/login', (req, res) => {
 });
 
 app.get('/get-admin-staff', (req, res) => res.json(staffDB));
-app.get('/get-staff', (req, res) => res.json(playerDB));
+app.get('/get-staff', (req, res) => {
+    const safeDB = {};
+    for (let id in playerDB) {
+        safeDB[id] = { 
+            name: playerDB[id].name, 
+            level: playerDB[id].level, 
+            dept: playerDB[id].dept, 
+            mc_name: playerDB[id].mc_name, 
+            role: playerDB[id].role,
+            bio: playerDB[id].bio,   // Убедись, что эта строка есть
+            note: playerDB[id].note  // И эта тоже
+        };
+    }
+    res.json(safeDB);
+});
 
 app.post('/send-report', (req, res) => {
     const { user, text, timestamp } = req.body;
@@ -145,3 +159,4 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
