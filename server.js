@@ -46,17 +46,29 @@ const trackMsg = (ctx, msg) => {
 };
 
 async function addNoteToGithub(note) {
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`;
-    const headers = { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' };
+    // Добавляем случайный параметр к URL, чтобы обойти кэш при чтении
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
+    const headers = { 
+        Authorization: `token ${GITHUB_TOKEN}`, 
+        Accept: 'application/vnd.github.v3+json',
+        'Cache-Control': 'no-cache', // Прямое указание не кэшировать
+        'If-None-Match': ''          // Сброс ETag
+    };
+
     try {
         const res = await axios.get(url, { headers });
         const content = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
-        content.push(note);
-        await axios.put(url, {
+        
+        // Проверка: если вдруг пришел не массив, создаем его
+        const archiveArray = Array.isArray(content) ? content : [];
+        archiveArray.push(note);
+
+        await axios.put(`https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`, {
             message: `Archive Update: ${note.title}`,
-            content: Buffer.from(JSON.stringify(content, null, 4)).toString('base64'),
-            sha: res.data.sha
-        }, { headers });
+            content: Buffer.from(JSON.stringify(archiveArray, null, 4)).toString('base64'),
+            sha: res.data.sha // SHA обязателен для обновления существующего файла
+        }, { headers: { Authorization: `token ${GITHUB_TOKEN}` } });
+
         return true;
     } catch (e) {
         console.error("GH_SYNC_ERROR:", e.response ? e.response.data : e.message);
@@ -225,3 +237,4 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`PRISM_SERVER_READY_PORT_${PORT}`));
+
