@@ -19,7 +19,6 @@ app.use(express.json());
 // === СОСТОЯНИЯ И БАЗЫ ===
 const userStates = new Map();
 const chatHistory = new Map();
-
 let systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
 
 let staffDB = {
@@ -38,94 +37,115 @@ let playerDB = {
 };
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+const trackMsg = (ctx, msg) => {
+    if (msg?.message_id) {
+        if (!chatHistory.has(ctx.chat.id)) chatHistory.set(ctx.chat.id, []);
+        chatHistory.get(ctx.chat.id).push(msg.message_id);
+    }
+};
+
 async function addNoteToGithub(note) {
     const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
-    const headers = { 
-        Authorization: `token ${GITHUB_TOKEN}`, 
-        Accept: 'application/vnd.github.v3+json'
-    };
-
+    const headers = { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' };
     try {
         const res = await axios.get(url, { headers });
         const currentSha = res.data.sha; 
-        const rawContent = Buffer.from(res.data.content, 'base64').toString();
-        let archiveArray = JSON.parse(rawContent || "[]");
-        
-        if (!Array.isArray(archiveArray)) archiveArray = [];
+        const archiveArray = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
         archiveArray.push(note);
-
-        await axios.put(`https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`, {
-            message: `New Report: ${note.title}`,
+        await axios.put(url, {
+            message: `Update: ${note.title}`,
             content: Buffer.from(JSON.stringify(archiveArray, null, 4)).toString('base64'),
             sha: currentSha
         }, { headers });
-
         return true;
-    } catch (e) {
-        console.error("GH_SYNC_ERROR:", e.message);
-        return false;
-    }
+    } catch (e) { return false; }
 }
 
-// === API ЭНДПОИНТЫ (ДЛЯ САЙТА) ===
-app.get('/', (req, res) => res.send('SERVER_HEARTBEAT_OK'));
-
+// === API ДЛЯ САЙТА ===
 app.post('/login', (req, res) => {
     const { id, pass } = req.body;
-    const user = staffDB[id];
-    if (user && user.pass === pass) res.json({ success: true, level: user.level, name: user.name, role: user.role });
+    const u = staffDB[id];
+    if (u && u.pass === pass) res.json({ success: true, level: u.level, name: u.name, role: u.role });
     else res.status(401).json({ success: false });
 });
 
 app.get('/status', (req, res) => res.json(systemStatus));
 
-// ВОТ ЭТОГО НЕ ХВАТАЛО ДЛЯ РАПОРТОВ:
 app.post('/send-report', async (req, res) => {
     const { user, text, timestamp } = req.body;
-    if (!text) return res.status(400).send("No text");
-
-    const note = {
-        id: `W${Date.now()}`,
-        title: `ВЕБ-РАПОРТ ОТ ${user}`,
-        level: 1,
-        content: text,
-        date: timestamp || new Date().toLocaleString('ru-RU')
-    };
-
-    const success = await addNoteToGithub(note);
-    if (success) {
-        bot.telegram.sendMessage(ADMIN_CHAT_ID, `📝 **НОВЫЙ ВЕБ-РАПОРТ**\nОт: ${user}\n\n${text}`, { parse_mode: 'Markdown' });
+    const note = { id: `W${Date.now()}`, title: `РАПОРТ: ${user}`, level: 1, content: text, date: timestamp || new Date().toLocaleString() };
+    if (await addNoteToGithub(note)) {
+        bot.telegram.sendMessage(ADMIN_CHAT_ID, `📝 **ВЕБ-РАПОРТ**\nОт: ${user}\n\n${text}`, { parse_mode: 'Markdown' });
         res.json({ success: true });
-    } else {
-        res.status(500).json({ success: false });
-    }
+    } else res.status(500).json({ success: false });
 });
 
-// ЛОГИ ВХОДА С САЙТА:
 app.post('/auth-log', (req, res) => {
-    const { id, name, level } = req.body;
-    bot.telegram.sendMessage(ADMIN_CHAT_ID, `🔐 **ВХОД В ТЕРМИНАЛ**\nСубъект: ${name} (${id})\nУровень: L${level}`);
+    bot.telegram.sendMessage(ADMIN_CHAT_ID, `🔐 **ВХОД**\n${req.body.name} (${req.body.id})\nL${req.body.level}`);
     res.json({ success: true });
 });
 
-// === ТЕЛЕГРАМ БОТ (ЛОГИКА) ===
-const mainMenu = Markup.keyboard([
-    ['🔴 RED CODE', '🟢 STABLE'],
-    ['📝 НОВАЯ ЗАПИСЬ', '📂 АРХИВ'],
-    ['👥 ДОСЬЕ', '👔 СОТРУДНИКИ'],
-    ['📊 СТАТУС', '🧹 ОЧИСТКА']
-]).resize();
+// === ЛОГИКА БОТА ===
+const mainMenu = Markup.keyboard([['🔴 RED CODE', '🟢 STABLE'], ['📝 НОВАЯ ЗАПИСЬ', '📂 АРХИВ'], ['👥 ДОСЬЕ', '👔 СОТРУДНИКИ'], ['📊 СТАТУС', '🧹 ОЧИСТКА']]).resize();
 
 bot.start((ctx) => ctx.reply('🛡️ Терминал P.R.I.S.M. активен.', mainMenu));
 
-// ... (остальные hears: ДОСЬЕ, СОТРУДНИКИ, СТАТУС, АРХИВ - оставляем как были) ...
-// (обязательно оставь hears('📝 НОВАЯ ЗАПИСЬ') и bot.on('text') для бота)
+bot.hears('👥 ДОСЬЕ', async (ctx) => {
+    let list = "📂 **РЕЕСТР СУБЪЕКТОВ:**\n━━━━━━━━━━━━━━\n";
+    Object.keys(playerDB).forEach(id => { const p = playerDB[id]; list += `🔹 \`${id}\` — **${p.name}**\n   _Отдел:_ ${p.dept}\n`; });
+    trackMsg(ctx, await ctx.reply(list, { parse_mode: 'Markdown' }));
+});
 
-// КОРРЕКТНЫЙ ЗАПУСК И ЗАВЕРШЕНИЕ
-bot.launch().then(() => console.log("БОТ ЗАПУЩЕН")).catch(err => console.error("LAUNCH_ERROR:", err));
+bot.hears('👔 СОТРУДНИКИ', async (ctx) => {
+    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return;
+    let list = "🛡️ **РЕЕСТР ДОСТУПА:**\n━━━━━━━━━━━━━━\n";
+    Object.keys(staffDB).forEach(id => { const s = staffDB[id]; list += `🔸 \`${id}\` — **${s.name}** (L${s.level})\n   _Pass:_ \`${s.pass}\`\n`; });
+    trackMsg(ctx, await ctx.reply(list, { parse_mode: 'Markdown' }));
+});
 
+bot.hears('📊 СТАТУС', async (ctx) => {
+    trackMsg(ctx, await ctx.reply(`📊 **СТАТУС:**\n${systemStatus.label}\n${systemStatus.reason}`, { parse_mode: 'Markdown' }));
+});
+
+bot.hears('🟢 STABLE', (ctx) => {
+    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return;
+    systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
+    ctx.reply('✅ Стабилизировано.', mainMenu);
+});
+
+bot.hears('🔴 RED CODE', async (ctx) => {
+    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return;
+    userStates.set(ctx.from.id, { step: 'WAIT_REASON' });
+    ctx.reply('🚨 ПРИЧИНА ТРЕВОГИ:', Markup.removeKeyboard());
+});
+
+bot.hears('📝 НОВАЯ ЗАПИСЬ', async (ctx) => {
+    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return;
+    userStates.set(ctx.from.id, { step: 'WAIT_TITLE' });
+    ctx.reply('📄 ЗАГОЛОВОК:', Markup.removeKeyboard());
+});
+
+bot.on('text', async (ctx, next) => {
+    const state = userStates.get(ctx.from.id);
+    if (!state) return next();
+    if (state.step === 'WAIT_REASON') {
+        systemStatus = { state: "RED", label: "🚨 ТРЕВОГА", color: "#ff4444", reason: ctx.message.text };
+        userStates.delete(ctx.from.id);
+        ctx.reply(`⚠️ RED CODE АКТИВИРОВАН`, mainMenu);
+    } else if (state.step === 'WAIT_TITLE') {
+        userStates.set(ctx.from.id, { step: 'WAIT_LEVEL', title: ctx.message.text });
+        ctx.reply('🔑 УРОВЕНЬ (1-5):');
+    } else if (state.step === 'WAIT_LEVEL') {
+        userStates.set(ctx.from.id, { ...state, step: 'WAIT_TEXT', level: ctx.message.text });
+        ctx.reply('✍️ ТЕКСТ:');
+    } else if (state.step === 'WAIT_TEXT') {
+        const note = { id: `L${Date.now()}`, title: state.title, level: parseInt(state.level), content: ctx.message.text, date: new Date().toLocaleDateString('ru-RU') };
+        ctx.reply(await addNoteToGithub(note) ? '✅ СОХРАНЕНО' : '❌ ОШИБКА', mainMenu);
+        userStates.delete(ctx.from.id);
+    }
+});
+
+bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`PRISM_SERVER_READY_PORT_${PORT}`));
+app.listen(process.env.PORT || 10000, () => console.log("SERVER_OK"));
