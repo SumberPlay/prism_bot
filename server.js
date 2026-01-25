@@ -10,7 +10,9 @@ const bot = new Telegraf(BOT_TOKEN);
 
 app.use(cors());
 app.use(express.json());
-
+app.get('/', (req, res) => {
+    res.status(200).send('SERVER_HEARTBEAT_OK');
+});
 // Хранилище ID сообщений для удаления
 const chatHistory = new Map();
 
@@ -227,6 +229,7 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
 
