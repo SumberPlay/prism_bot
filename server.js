@@ -69,7 +69,10 @@ async function addNoteToGithub(note) {
         }, { headers: { Authorization: `token ${GITHUB_TOKEN}` } });
 
         return true;
-    } catch (e) { ... }
+    } catch (e) {
+        console.error("GH_SYNC_ERROR:", e.response ? e.response.data : e.message);
+        return false;
+    }
 }
 
     try {
@@ -254,5 +257,6 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`PRISM_SERVER_READY_PORT_${PORT}`));
+
 
 
