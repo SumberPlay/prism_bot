@@ -1,8 +1,8 @@
 const express = require('express');
 const { Telegraf, Markup } = require('telegraf');
 const cors = require('cors');
+const CryptoJS = require('crypto-js');
 
-// Данные из ваших настроек
 const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
 const ADMIN_CHAT_ID = '5681992508'; 
 
@@ -12,7 +12,43 @@ const bot = new Telegraf(BOT_TOKEN);
 app.use(cors());
 app.use(express.json());
 
-// Объект статуса с поддержкой причины
+// === ЦЕНТРАЛЬНАЯ БАЗА СОТРУДНИКОВ ===
+// В будущем это можно вынести в отдельный staff.json
+let staffDB = {
+    "M4SK": { 
+        pass: "5e03fcd2d70a976a6b026374da5da3f9", 
+        role: "scientific", level: 3, name: "МэнсиКейн", 
+        mc_name: "MancyKane", dept: "Научный Департамент", 
+        spec: "Аномалии", joined: "03.01.2026",
+        bio: "Ведущий специалист по изучению Объекта #001.",
+        note: "Замечена повышенная активность. Рекомендовано наблюдение."
+    },
+    "KRMP": { 
+        pass: "1bf502b835ee007957e558cbb1959ecb", 
+        role: "military", level: 2, name: "Кримпи", 
+        mc_name: "Krimpi", dept: "Военная Группа", 
+        spec: "Тактика", joined: "03.01.2026",
+        bio: "Командир оперативной группы.",
+        note: "Прямое подчинение Совету в случае протокола 'ЗЕРО'."
+    },
+    "SUMBR": { 
+        pass: "8aaa688aadaf78796f5f620a4897eeb3", 
+        role: "council", level: 5, name: "Самбер", 
+        mc_name: "SumberTheCreator", dept: "Высший Совет", 
+        spec: "Куратор", joined: "С основания",
+        bio: "Основатель P.R.I.S.M. Личность засекречена.",
+        note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Инициирует протоколы очистки."
+    },
+    "MRYZE": { 
+        pass: "b0eee0a274f64e6f5792b85c93321159", 
+        role: "council", level: 5, name: "Юз", 
+        mc_name: "MrYuze", dept: "Высший Совет", 
+        spec: "Стратег", joined: "С основания",
+        bio: "Глава аналитического отдела Совета.",
+        note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Ответственный за внешние связи."
+    }
+};
+
 let systemStatus = {
     state: "NORMAL",
     label: "ШТАТНЫЙ РЕЖИМ",
@@ -20,16 +56,23 @@ let systemStatus = {
     reason: ""
 };
 
-// Хранилище временных состояний пользователей
 const userStates = new Map();
 
-// === API ===
-app.get('/', (req, res) => {
-    res.send('🛡️ P.R.I.S.M. API IS ACTIVE');
+// === API ДЛЯ САЙТА ===
+
+app.get('/status', (req, res) => res.json(systemStatus));
+
+// Отдает базу данных на сайт
+app.get('/get-staff', (req, res) => {
+    res.json(staffDB);
 });
 
-app.get('/status', (req, res) => {
-    res.json(systemStatus);
+// Логирует вход сотрудника в Telegram
+app.post('/auth-log', (req, res) => {
+    const { id, name, level } = req.body;
+    const logMsg = `👤 **АВТОРИЗАЦИЯ**\n━━━━━━━━━━━━━━\nID: \`${id}\`\nИмя: **${name}**\nДопуск: **L${level}**\n━━━━━━━━━━━━━━\nСистема: Доступ разрешен.`;
+    bot.telegram.sendMessage(ADMIN_CHAT_ID, logMsg, { parse_mode: 'Markdown' });
+    res.json({ success: true });
 });
 
 app.post('/send-report', (req, res) => {
@@ -39,97 +82,78 @@ app.post('/send-report', (req, res) => {
     res.json({ success: true });
 });
 
-// === КЛАВИАТУРА ===
+// === КОМАНДЫ БОТА ===
+
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
-    ['✍️ ИЗМЕНИТЬ СТАТУС', '🧹 ОЧИСТКА'],
+    ['✍️ СТАТУС', '👥 ПЕРСОНАЛ'],
     ['📊 ТЕКУЩИЙ СТАТУС']
 ]).resize();
 
-// === ЛОГИКА БОТА ===
+bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активен.', mainMenu));
 
-bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активирован.', mainMenu));
-
-// Активация Красного Кода (Запрос причины)
-bot.hears('🔴 RED CODE', (ctx) => {
-    userStates.set(ctx.from.id, 'WAITING_FOR_REASON');
-    ctx.reply('🚨 ВНИМАНИЕ! Введите причину активации КРАСНОГО КОДА:', Markup.removeKeyboard());
+// Список персонала
+bot.hears('👥 ПЕРСОНАЛ', (ctx) => {
+    let list = "📂 **РЕЕСТР СОТРУДНИКОВ:**\n\n";
+    Object.keys(staffDB).forEach(id => {
+        list += `🔹 \`${id}\` — ${staffDB[id].name} (L${staffDB[id].level})\n`;
+    });
+    list += "\nДля правки примечания: `/set_note ID Текст`";
+    ctx.reply(list, { parse_mode: 'Markdown' });
 });
 
-// Стабилизация (Сброс статуса)
+// Изменение секретной заметки через бота
+bot.command('set_note', (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 3) return ctx.reply('Формат: /set_note ID Новый текст примечания');
+    
+    const targetId = args[1].toUpperCase();
+    const newNote = args.slice(2).join(' ');
+
+    if (staffDB[targetId]) {
+        staffDB[targetId].note = newNote;
+        ctx.reply(`✅ Примечание для **${staffDB[targetId].name}** обновлено.`);
+    } else {
+        ctx.reply('❌ Сотрудник с таким ID не найден.');
+    }
+});
+
+bot.hears('🔴 RED CODE', (ctx) => {
+    userStates.set(ctx.from.id, 'WAITING_FOR_REASON');
+    ctx.reply('🚨 Введите причину активации КРАСНОГО КОДА:', Markup.removeKeyboard());
+});
+
 bot.hears('🟢 STABLE', (ctx) => {
-    systemStatus = { 
-        state: "NORMAL", 
-        label: "ШТАТНЫЙ РЕЖИМ", 
-        color: "#00ffcc", 
-        reason: "" 
-    };
-    userStates.delete(ctx.from.id);
-    ctx.reply('✅ Ситуация стабилизирована. Система возвращена в штатный режим.', mainMenu);
+    systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
+    ctx.reply('✅ Система в штатном режиме.', mainMenu);
 });
 
 bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
-    let message = `📊 **Текущий статус:** ${systemStatus.label}\n`;
+    let message = `📊 **Статус:** ${systemStatus.label}\n`;
     if (systemStatus.reason) message += `📝 **Причина:** ${systemStatus.reason}`;
     ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
-// Ручное изменение текста статуса
-bot.command('set_status', (ctx) => {
-    const newLabel = ctx.message.text.split('/set_status ')[1];
-    if (!newLabel) return ctx.reply('Использование: /set_status Текст');
-    systemStatus.label = newLabel.toUpperCase();
-    ctx.reply(`✅ Заголовок статуса изменен на: ${systemStatus.label}`);
-});
-
-bot.hears('✍️ ИЗМЕНИТЬ СТАТУС', (ctx) => {
-    ctx.reply('Чтобы просто изменить текст без смены режима, введите: /set_status ВАШ ТЕКСТ');
-});
-
-// Очистка чата
-bot.hears('🧹 ОЧИСТКА', async (ctx) => {
-    ctx.reply('Зачистка последних сообщений...');
-    for (let i = 0; i < 20; i++) {
-        try { await ctx.deleteMessage(ctx.message.message_id - i).catch(() => {}); } catch (e) {}
-    }
-});
-
-// ОБРАБОТЧИК ТЕКСТА (Для ввода причины и прочего)
 bot.on('text', async (ctx, next) => {
     const userId = ctx.from.id;
     const state = userStates.get(userId);
 
     if (state === 'WAITING_FOR_REASON') {
-        const reasonText = ctx.message.text;
-
-        // Обновляем глобальный статус
         systemStatus = {
             state: "RED",
             label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ",
             color: "#ff4444",
-            reason: reasonText
+            reason: ctx.message.text
         };
-
-        userStates.delete(userId); // Очищаем состояние
-
-        await ctx.reply(`⚠️ RED CODE УСТАНОВЛЕН\nПричина: ${reasonText}`, mainMenu);
-
-        // Уведомление администратору
-        const alertMsg = `‼️ **ALARM: RED CODE**\n━━━━━━━━━━━━━━\n👤 **Инициатор:** ${ctx.from.first_name}\n🔴 **Причина:** ${reasonText}`;
-        bot.telegram.sendMessage(ADMIN_CHAT_ID, alertMsg, { parse_mode: 'Markdown' });
+        userStates.delete(userId);
+        await ctx.reply(`⚠️ RED CODE УСТАНОВЛЕН`, mainMenu);
+        bot.telegram.sendMessage(ADMIN_CHAT_ID, `‼️ **ALARM: RED CODE**\n🔴 **Причина:** ${systemStatus.reason}`, { parse_mode: 'Markdown' });
         return;
     }
-
     return next();
 });
 
-// Запуск
-bot.launch().then(() => console.log('Bot is running...'));
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+bot.launch().then(() => console.log('P.R.I.S.M. System Online'));
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`API port: ${PORT}`));
