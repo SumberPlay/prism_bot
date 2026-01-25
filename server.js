@@ -57,7 +57,18 @@ async function addNoteToGithub(note) {
             sha: res.data.sha
         }, { headers });
         return true;
-    } catch (e) { return false; }
+    } catch (e) {
+        console.error('--- GITHUB API ERROR ---');
+        if (e.response) {
+            // Ошибка пришла от самого GitHub (например, 404 или 401)
+            console.error('Status:', e.response.status);
+            console.error('Data:', e.response.data);
+        } else {
+            // Ошибка сети или кода
+            console.error('Message:', e.message);
+        }
+        return false; 
+    }
 }
 
 // === API ===
@@ -167,3 +178,4 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`PRISM_SERVER_ONLINE: ${PORT}`));
+
