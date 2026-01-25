@@ -99,10 +99,10 @@ let staffDB = {
 };
 
 let playerDB = {
-    "M4SK": { role: "scientific", level: 3, name: "ТЕст1", mc_name: "m4skine_", dept: "Научный Департамент", bio: "Специалист по Объекту #001.", note: "Активность повышена." },
-    "KRMP": { role: "military", level: 2, name: "ТЕст2", mc_name: "Krimpi", dept: "Военная Группа", bio: "Командир группы.", note: "Подчинение Совету." },
-    "SUMBR": { role: "council", level: 5, name: "ТЕст3", mc_name: "SumberTheCreator", dept: "Высший Совет", bio: "Основатель.", note: "КЛЮЧ: ВСЕ СЕКТОРА." },
-    "MRYZE": { role: "council", level: 5, name: "ТЕст4", mc_name: "MrYuze", dept: "Высший Совет", bio: "Глава аналитики.", note: "Внешние связи." }
+    "M4SK": { level: 0, name: "ТЕст1", mc_name: "Steve", dept: "Организация1", bio: "Создатель." },
+    "KRMP": { level: 2, name: "ТЕст2", mc_name: "Steve1", dept: "Организация2", bio: "Отдель снабжения.", note: "Подчинение Совету." },
+    "SUMBR": { level: 3, name: "ТЕст3", mc_name: "Steve2", dept: "Организация3", bio: "Не придумал." },
+    "MRYZE": { level: 5, name: "ТЕст4", mc_name: "Steve3", dept: "Организация4", bio: "Глава глав." }
 };
 
 let systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
@@ -229,6 +229,7 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
 
