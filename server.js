@@ -13,7 +13,6 @@ app.use(cors());
 app.use(express.json());
 
 // === ЦЕНТРАЛЬНАЯ БАЗА СОТРУДНИКОВ ===
-// В будущем это можно вынести в отдельный staff.json
 let staffDB = {
     "M4SK": { 
         pass: "5e03fcd2d70a976a6b026374da5da3f9", 
@@ -62,12 +61,43 @@ const userStates = new Map();
 
 app.get('/status', (req, res) => res.json(systemStatus));
 
-// Отдает базу данных на сайт
+// 1. БЕЗОПАСНЫЙ СПИСОК (БЕЗ ПАРОЛЕЙ И БИО)
 app.get('/get-staff', (req, res) => {
-    res.json(staffDB);
+    const safeDB = {};
+    for (let id in staffDB) {
+        safeDB[id] = {
+            name: staffDB[id].name,
+            level: staffDB[id].level,
+            role: staffDB[id].role,
+            dept: staffDB[id].dept,
+            mc_name: staffDB[id].mc_name
+        };
+    }
+    res.json(safeDB);
 });
 
-// Логирует вход сотрудника в Telegram
+// 2. ПОЛУЧЕНИЕ БИОГРАФИИ (ДЛЯ DOSSIER)
+app.get('/get-bio/:id', (req, res) => {
+    const id = req.params.id;
+    if (staffDB[id]) {
+        res.json({ bio: staffDB[id].bio });
+    } else {
+        res.status(404).json({ bio: "ДАННЫЕ_ОТСУТСТВУЮТ" });
+    }
+});
+
+// 3. ПОЛУЧЕНИЕ ЗАМЕТКИ (ТОЛЬКО ДЛЯ СОВЕТА)
+app.get('/get-note/:id', (req, res) => {
+    const id = req.params.id;
+    const requesterLevel = req.query.lvl;
+
+    if (requesterLevel >= 5) {
+        res.json({ note: staffDB[id] ? staffDB[id].note : "НЕТ_ДАННЫХ" });
+    } else {
+        res.status(403).json({ note: "ОШИБКА_ДОСТУПА" });
+    }
+});
+
 app.post('/auth-log', (req, res) => {
     const { id, name, level } = req.body;
     const logMsg = `👤 **АВТОРИЗАЦИЯ**\n━━━━━━━━━━━━━━\nID: \`${id}\`\nИмя: **${name}**\nДопуск: **L${level}**\n━━━━━━━━━━━━━━\nСистема: Доступ разрешен.`;
@@ -76,14 +106,14 @@ app.post('/auth-log', (req, res) => {
 });
 
 app.post('/send-report', (req, res) => {
-    const { user, subject, text, timestamp } = req.body;
-    const reportMsg = `📩 **НОВЫЙ РАПОРТ**\n━━━━━━━━━━━━━━\n👤 **От:** ${user}\n📝 **Тема:** ${subject}\n🕒 **Время:** ${timestamp}\n━━━━━━━━━━━━━━\n${text}`;
+    const { user, text, timestamp } = req.body;
+    const reportMsg = `📩 **НОВЫЙ РАПОРТ**\n━━━━━━━━━━━━━━\n👤 **От:** ${user}\n🕒 **Время:** ${timestamp}\n━━━━━━━━━━━━━━\n${text}`;
     bot.telegram.sendMessage(ADMIN_CHAT_ID, reportMsg, { parse_mode: 'Markdown' });
     res.json({ success: true });
 });
 
 // === КОМАНДЫ БОТА ===
-
+// (Тут оставляем твой старый код без изменений)
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
     ['✍️ СТАТУС', '👥 ПЕРСОНАЛ'],
@@ -92,7 +122,6 @@ const mainMenu = Markup.keyboard([
 
 bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активен.', mainMenu));
 
-// Список персонала
 bot.hears('👥 ПЕРСОНАЛ', (ctx) => {
     let list = "📂 **РЕЕСТР СОТРУДНИКОВ:**\n\n";
     Object.keys(staffDB).forEach(id => {
@@ -102,20 +131,15 @@ bot.hears('👥 ПЕРСОНАЛ', (ctx) => {
     ctx.reply(list, { parse_mode: 'Markdown' });
 });
 
-// Изменение секретной заметки через бота
 bot.command('set_note', (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 3) return ctx.reply('Формат: /set_note ID Новый текст примечания');
-    
     const targetId = args[1].toUpperCase();
     const newNote = args.slice(2).join(' ');
-
     if (staffDB[targetId]) {
         staffDB[targetId].note = newNote;
         ctx.reply(`✅ Примечание для **${staffDB[targetId].name}** обновлено.`);
-    } else {
-        ctx.reply('❌ Сотрудник с таким ID не найден.');
-    }
+    } else { ctx.reply('❌ Сотрудник с таким ID не найден.'); }
 });
 
 bot.hears('🔴 RED CODE', (ctx) => {
@@ -137,14 +161,8 @@ bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
 bot.on('text', async (ctx, next) => {
     const userId = ctx.from.id;
     const state = userStates.get(userId);
-
     if (state === 'WAITING_FOR_REASON') {
-        systemStatus = {
-            state: "RED",
-            label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ",
-            color: "#ff4444",
-            reason: ctx.message.text
-        };
+        systemStatus = { state: "RED", label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ", color: "#ff4444", reason: ctx.message.text };
         userStates.delete(userId);
         await ctx.reply(`⚠️ RED CODE УСТАНОВЛЕН`, mainMenu);
         bot.telegram.sendMessage(ADMIN_CHAT_ID, `‼️ **ALARM: RED CODE**\n🔴 **Причина:** ${systemStatus.reason}`, { parse_mode: 'Markdown' });
@@ -154,6 +172,5 @@ bot.on('text', async (ctx, next) => {
 });
 
 bot.launch().then(() => console.log('P.R.I.S.M. System Online'));
-
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
