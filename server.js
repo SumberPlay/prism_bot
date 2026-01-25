@@ -2,6 +2,7 @@ const express = require('express');
 const { Telegraf, Markup } = require('telegraf');
 const cors = require('cors');
 
+// Данные из ваших настроек
 const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
 const ADMIN_CHAT_ID = '5681992508'; 
 
@@ -11,18 +12,22 @@ const bot = new Telegraf(BOT_TOKEN);
 app.use(cors());
 app.use(express.json());
 
+// Объект статуса с поддержкой причины
 let systemStatus = {
     state: "NORMAL",
     label: "ШТАТНЫЙ РЕЖИМ",
-    color: "#00ffcc"
+    color: "#00ffcc",
+    reason: ""
 };
 
-// === ИСПРАВЛЕНИЕ "CANNOT GET /" ===
+// Хранилище временных состояний пользователей
+const userStates = new Map();
+
+// === API ===
 app.get('/', (req, res) => {
     res.send('🛡️ P.R.I.S.M. API IS ACTIVE');
 });
 
-// === API ДЛЯ САЙТА ===
 app.get('/status', (req, res) => {
     res.json(systemStatus);
 });
@@ -34,54 +39,93 @@ app.post('/send-report', (req, res) => {
     res.json({ success: true });
 });
 
-// === ЛОГИКА ТЕЛЕГРАМ-БОТА ===
+// === КЛАВИАТУРА ===
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
     ['✍️ ИЗМЕНИТЬ СТАТУС', '🧹 ОЧИСТКА'],
     ['📊 ТЕКУЩИЙ СТАТУС']
 ]).resize();
 
+// === ЛОГИКА БОТА ===
+
 bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активирован.', mainMenu));
 
+// Активация Красного Кода (Запрос причины)
 bot.hears('🔴 RED CODE', (ctx) => {
-    systemStatus = { state: "RED", label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ", color: "#ff4444" };
-    ctx.reply('⚠️ Объявлен КРАСНЫЙ УРОВЕНЬ!');
-    bot.telegram.sendMessage(ADMIN_CHAT_ID, "‼️ RED CODE активирован пользователем " + ctx.from.first_name);
+    userStates.set(ctx.from.id, 'WAITING_FOR_REASON');
+    ctx.reply('🚨 ВНИМАНИЕ! Введите причину активации КРАСНОГО КОДА:', Markup.removeKeyboard());
 });
 
+// Стабилизация (Сброс статуса)
 bot.hears('🟢 STABLE', (ctx) => {
-    systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc" };
-    ctx.reply('✅ Ситуация стабилизирована.');
+    systemStatus = { 
+        state: "NORMAL", 
+        label: "ШТАТНЫЙ РЕЖИМ", 
+        color: "#00ffcc", 
+        reason: "" 
+    };
+    userStates.delete(ctx.from.id);
+    ctx.reply('✅ Ситуация стабилизирована. Система возвращена в штатный режим.', mainMenu);
 });
 
-bot.hears('✍️ ИЗМЕНИТЬ СТАТУС', (ctx) => {
-    ctx.reply('Введите: /set_status ТЕКСТ');
+bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
+    let message = `📊 **Текущий статус:** ${systemStatus.label}\n`;
+    if (systemStatus.reason) message += `📝 **Причина:** ${systemStatus.reason}`;
+    ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
+// Ручное изменение текста статуса
 bot.command('set_status', (ctx) => {
     const newLabel = ctx.message.text.split('/set_status ')[1];
     if (!newLabel) return ctx.reply('Использование: /set_status Текст');
     systemStatus.label = newLabel.toUpperCase();
-    ctx.reply(`✅ Статус обновлен на: ${systemStatus.label}`);
+    ctx.reply(`✅ Заголовок статуса изменен на: ${systemStatus.label}`);
 });
 
+bot.hears('✍️ ИЗМЕНИТЬ СТАТУС', (ctx) => {
+    ctx.reply('Чтобы просто изменить текст без смены режима, введите: /set_status ВАШ ТЕКСТ');
+});
+
+// Очистка чата
 bot.hears('🧹 ОЧИСТКА', async (ctx) => {
-    ctx.reply('Зачистка чата...');
-    for (let i = 0; i < 50; i++) {
+    ctx.reply('Зачистка последних сообщений...');
+    for (let i = 0; i < 20; i++) {
         try { await ctx.deleteMessage(ctx.message.message_id - i).catch(() => {}); } catch (e) {}
     }
 });
 
-bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
-    ctx.reply(`Состояние: ${systemStatus.state}\nТекст: ${systemStatus.label}`);
+// ОБРАБОТЧИК ТЕКСТА (Для ввода причины и прочего)
+bot.on('text', async (ctx, next) => {
+    const userId = ctx.from.id;
+    const state = userStates.get(userId);
+
+    if (state === 'WAITING_FOR_REASON') {
+        const reasonText = ctx.message.text;
+
+        // Обновляем глобальный статус
+        systemStatus = {
+            state: "RED",
+            label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ",
+            color: "#ff4444",
+            reason: reasonText
+        };
+
+        userStates.delete(userId); // Очищаем состояние
+
+        await ctx.reply(`⚠️ RED CODE УСТАНОВЛЕН\nПричина: ${reasonText}`, mainMenu);
+
+        // Уведомление администратору
+        const alertMsg = `‼️ **ALARM: RED CODE**\n━━━━━━━━━━━━━━\n👤 **Инициатор:** ${ctx.from.first_name}\n🔴 **Причина:** ${reasonText}`;
+        bot.telegram.sendMessage(ADMIN_CHAT_ID, alertMsg, { parse_mode: 'Markdown' });
+        return;
+    }
+
+    return next();
 });
 
-// === ИСПРАВЛЕНИЕ ОШИБКИ 409 (CONFLICT) ===
-bot.launch().then(() => {
-    console.log('Bot is running...');
-});
+// Запуск
+bot.launch().then(() => console.log('Bot is running...'));
 
-// Обработка завершения процесса для Render
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
