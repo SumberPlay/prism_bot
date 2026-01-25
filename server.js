@@ -46,47 +46,25 @@ const trackMsg = (ctx, msg) => {
 };
 
 async function addNoteToGithub(note) {
-    // Добавляем ?t= к ссылке внутри бота, чтобы он сам не читал кэш!
     const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
     const headers = { 
         Authorization: `token ${GITHUB_TOKEN}`, 
         Accept: 'application/vnd.github.v3+json',
-        'Cache-Control': 'no-cache' 
+        'Cache-Control': 'no-cache'
     };
 
     try {
         const res = await axios.get(url, { headers });
-        // SHA — это ключ к тому, что мы правим ПОСЛЕДНЮЮ версию
         const currentSha = res.data.sha; 
         const content = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
         
-        content.push(note);
-
-        await axios.put(`https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`, {
-            message: `Archive Update: ${note.title}`,
-            content: Buffer.from(JSON.stringify(content, null, 4)).toString('base64'),
-            sha: currentSha // Обязательно передаем актуальный SHA
-        }, { headers: { Authorization: `token ${GITHUB_TOKEN}` } });
-
-        return true;
-    } catch (e) {
-        console.error("GH_SYNC_ERROR:", e.response ? e.response.data : e.message);
-        return false;
-    }
-}
-
-    try {
-        const res = await axios.get(url, { headers });
-        const content = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
-        
-        // Проверка: если вдруг пришел не массив, создаем его
         const archiveArray = Array.isArray(content) ? content : [];
         archiveArray.push(note);
 
         await axios.put(`https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`, {
             message: `Archive Update: ${note.title}`,
             content: Buffer.from(JSON.stringify(archiveArray, null, 4)).toString('base64'),
-            sha: res.data.sha // SHA обязателен для обновления существующего файла
+            sha: currentSha
         }, { headers: { Authorization: `token ${GITHUB_TOKEN}` } });
 
         return true;
@@ -120,7 +98,6 @@ bot.start(async (ctx) => {
     trackMsg(ctx, msg);
 });
 
-// --- 👥 ДОСЬЕ ---
 bot.hears('👥 ДОСЬЕ', async (ctx) => {
     let list = "📂 **РЕЕСТР СУБЪЕКТОВ:**\n━━━━━━━━━━━━━━\n";
     Object.keys(playerDB).forEach(id => {
@@ -131,7 +108,6 @@ bot.hears('👥 ДОСЬЕ', async (ctx) => {
     trackMsg(ctx, msg);
 });
 
-// --- 👔 СОТРУДНИКИ ---
 bot.hears('👔 СОТРУДНИКИ', async (ctx) => {
     if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return ctx.reply('ДОСТУП ЗАПРЕЩЕН');
     let list = "🛡️ **РЕЕСТР ДОСТУПА:**\n━━━━━━━━━━━━━━\n";
@@ -143,7 +119,6 @@ bot.hears('👔 СОТРУДНИКИ', async (ctx) => {
     trackMsg(ctx, msg);
 });
 
-// --- 📊 СТАТУС ---
 bot.hears('📊 СТАТУС', async (ctx) => {
     let message = `📊 **СТАТУС СИСТЕМЫ:**\n━━━━━━━━━━━━━━\n🔹 Режим: **${systemStatus.label}**\n`;
     if (systemStatus.reason) message += `📝 Детали: _${systemStatus.reason}_`;
@@ -151,14 +126,13 @@ bot.hears('📊 СТАТУС', async (ctx) => {
     trackMsg(ctx, msg);
 });
 
-// --- 📂 ПРОСМОТР АРХИВА ---
 bot.hears('📂 АРХИВ', async (ctx) => {
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`;
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
     const headers = { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' };
     try {
         const res = await axios.get(url, { headers });
         const content = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
-        if (content.length === 0) return ctx.reply("Архив пуст.");
+        if (!content || content.length === 0) return ctx.reply("Архив пуст.");
 
         const lastNotes = content.slice(-5).reverse();
         for (const note of lastNotes) {
@@ -171,26 +145,34 @@ bot.hears('📂 АРХИВ', async (ctx) => {
     } catch (e) { ctx.reply("❌ Ошибка чтения GitHub"); }
 });
 
-// --- ОБРАБОТЧИК УДАЛЕНИЯ (Inline Button) ---
 bot.action(/^del_(.+)$/, async (ctx) => {
     const noteId = ctx.match[1];
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`;
-    const headers = { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' };
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
+    const headers = { 
+        Authorization: `token ${GITHUB_TOKEN}`, 
+        Accept: 'application/vnd.github.v3+json',
+        'Cache-Control': 'no-cache'
+    };
     try {
         const res = await axios.get(url, { headers });
+        const currentSha = res.data.sha;
         let content = JSON.parse(Buffer.from(res.data.content, 'base64').toString());
         const newContent = content.filter(n => n.id !== noteId);
-        await axios.put(url, {
+        
+        await axios.put(`https://api.github.com/repos/${GITHUB_REPO}/contents/${FILE_PATH}`, {
             message: `Archive: Delete ${noteId}`,
             content: Buffer.from(JSON.stringify(newContent, null, 4)).toString('base64'),
-            sha: res.data.sha
-        }, { headers });
+            sha: currentSha
+        }, { headers: { Authorization: `token ${GITHUB_TOKEN}` } });
+
         await ctx.answerCbQuery("Запись удалена!");
         await ctx.editMessageText("🗑 Запись удалена из облака.");
-    } catch (e) { await ctx.answerCbQuery("Ошибка API"); }
+    } catch (e) { 
+        console.error("DEL_ERROR:", e.message);
+        await ctx.answerCbQuery("Ошибка API"); 
+    }
 });
 
-// --- 🧹 ОЧИСТКА ---
 bot.hears('🧹 ОЧИСТКА', async (ctx) => {
     const ids = chatHistory.get(ctx.chat.id) || [];
     for (const id of ids) { try { await ctx.deleteMessage(id); } catch(e) {} }
@@ -208,18 +190,19 @@ bot.hears('📝 НОВАЯ ЗАПИСЬ', async (ctx) => {
 });
 
 bot.hears('🔴 RED CODE', async (ctx) => {
+    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return ctx.reply('ДОСТУП ЗАПРЕЩЕН');
     userStates.set(ctx.from.id, { step: 'WAIT_REASON' });
     const msg = await ctx.reply('🚨 Укажите причину:', Markup.removeKeyboard());
     trackMsg(ctx, msg);
 });
 
 bot.hears('🟢 STABLE', async (ctx) => {
+    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return ctx.reply('ДОСТУП ЗАПРЕЩЕН');
     systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
     const msg = await ctx.reply('✅ Система стабилизирована.', mainMenu);
     trackMsg(ctx, msg);
 });
 
-// --- ГЛОБАЛЬНЫЙ ОБРАБОТЧИК ТЕКСТА ---
 bot.on('text', async (ctx, next) => {
     const state = userStates.get(ctx.from.id);
     if (!state) return next();
@@ -244,19 +227,23 @@ bot.on('text', async (ctx, next) => {
         trackMsg(ctx, msg);
     }
     else if (state.step === 'WAIT_TEXT') {
-        const note = { id: `L${Date.now()}`, title: state.title, level: state.level, content: txt, date: new Date().toLocaleDateString('ru-RU') };
+        const note = { 
+            id: `L${Date.now()}`, 
+            title: state.title, 
+            level: state.level, 
+            content: txt, 
+            date: new Date().toLocaleDateString('ru-RU') 
+        };
         const msgStatus = await ctx.reply('⏳ Синхронизация...');
         const success = await addNoteToGithub(note);
         userStates.delete(ctx.from.id);
-        await ctx.deleteMessage(msgStatus.message_id);
+        try { await ctx.deleteMessage(msgStatus.message_id); } catch(e) {}
         const msgRes = await ctx.reply(success ? '✅ ЗАПИСЬ СОХРАНЕНА' : '❌ ОШИБКА ГИТХАБА', mainMenu);
         trackMsg(ctx, msgRes);
     }
 });
 
-bot.launch();
+bot.launch().catch(err => console.error("BOT_LAUNCH_ERROR:", err));
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`PRISM_SERVER_READY_PORT_${PORT}`));
-
-
-
