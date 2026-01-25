@@ -49,19 +49,21 @@ const userStates = new Map();
 
 // === API ДЛЯ САЙТА ===
 
-// НОВЫЙ ЭНДПОИНТ ЛОГИНА (ВАРИАНТ А)
+// 1. ЛОГИН
 app.post('/login', (req, res) => {
     const { id, pass } = req.body;
     const user = staffDB[id];
     if (user && user.pass === pass) {
-        res.json({ success: true, level: user.level, name: user.name });
+        res.json({ success: true, level: user.level, name: user.name, role: user.role });
     } else {
         res.status(401).json({ success: false, message: "Отказ в доступе" });
     }
 });
 
+// 2. СТАТУС СИСТЕМЫ
 app.get('/status', (req, res) => res.json(systemStatus));
 
+// 3. СПИСОК ПЕРСОНАЛА (БЕЗОПАСНЫЙ)
 app.get('/get-staff', (req, res) => {
     const safeDB = {};
     for (let id in staffDB) {
@@ -69,17 +71,32 @@ app.get('/get-staff', (req, res) => {
             name: staffDB[id].name,
             level: staffDB[id].level,
             dept: staffDB[id].dept,
-            mc_name: staffDB[id].mc_name
+            mc_name: staffDB[id].mc_name,
+            role: staffDB[id].role
         };
     }
     res.json(safeDB);
 });
 
+// 4. ПОЛУЧЕНИЕ БИО
 app.get('/get-bio/:id', (req, res) => {
     const user = staffDB[req.params.id];
     res.json({ bio: user ? user.bio : "ДАННЫЕ ОТСУТСТВУЮТ" });
 });
 
+// 5. ОТПРАВКА РАПОРТА (ИСПРАВЛЕНО)
+app.post('/send-report', (req, res) => {
+    const { user, text, timestamp } = req.body;
+    if (!text) return res.status(400).json({ success: false });
+
+    const reportMsg = `📩 **НОВЫЙ РАПОРТ**\n━━━━━━━━━━━━━━\n👤 **От:** ${user}\n🕒 **Время:** ${timestamp}\n━━━━━━━━━━━━━━\n📝 **Текст:**\n${text}`;
+    
+    bot.telegram.sendMessage(ADMIN_CHAT_ID, reportMsg, { parse_mode: 'Markdown' })
+        .then(() => res.json({ success: true }))
+        .catch(() => res.status(500).json({ success: false }));
+});
+
+// 6. ЛОГ АВТОРИЗАЦИИ
 app.post('/auth-log', (req, res) => {
     const { id, name, level } = req.body;
     const logMsg = `👤 **АВТОРИЗАЦИЯ**\n━━━━━━━━━━━━━━\nID: \`${id}\`\nИмя: **${name}**\nДопуск: **L${level}**\n━━━━━━━━━━━━━━\nСистема: Доступ разрешен.`;
@@ -88,14 +105,34 @@ app.post('/auth-log', (req, res) => {
 });
 
 // === КОМАНДЫ БОТА ===
-const mainMenu = Markup.keyboard([['🔴 RED CODE', '🟢 STABLE'], ['✍️ СТАТУС', '👥 ПЕРСОНАЛ'], ['📊 ТЕКУЩИЙ СТАТУС']]).resize();
+const mainMenu = Markup.keyboard([
+    ['🔴 RED CODE', '🟢 STABLE'],
+    ['✍️ СТАТУС', '👥 ПЕРСОНАЛ'],
+    ['📊 ТЕКУЩИЙ СТАТУС']
+]).resize();
 
 bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активен.', mainMenu));
 
 bot.hears('👥 ПЕРСОНАЛ', (ctx) => {
     let list = "📂 **РЕЕСТР СОТРУДНИКОВ:**\n\n";
-    Object.keys(staffDB).forEach(id => { list += `🔹 \`${id}\` — ${staffDB[id].name} (L${staffDB[id].level})\n`; });
+    Object.keys(staffDB).forEach(id => { 
+        list += `🔹 \`${id}\` — ${staffDB[id].name} (L${staffDB[id].level})\n`; 
+    });
+    list += "\nДля правки заметки: `/set_note ID текст`";
     ctx.reply(list, { parse_mode: 'Markdown' });
+});
+
+bot.command('set_note', (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 3) return ctx.reply('Формат: /set_note ID текст');
+    const targetId = args[1].toUpperCase();
+    const newNote = args.slice(2).join(' ');
+    if (staffDB[targetId]) {
+        staffDB[targetId].note = newNote;
+        ctx.reply(`✅ Заметка для ${staffDB[targetId].name} обновлена.`);
+    } else {
+        ctx.reply('❌ ID не найден.');
+    }
 });
 
 bot.hears('🔴 RED CODE', (ctx) => {
@@ -106,6 +143,12 @@ bot.hears('🔴 RED CODE', (ctx) => {
 bot.hears('🟢 STABLE', (ctx) => {
     systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
     ctx.reply('✅ Система в штатном режиме.', mainMenu);
+});
+
+bot.hears('📊 ТЕКУЩИЙ СТАТУС', (ctx) => {
+    let message = `📊 **Статус:** ${systemStatus.label}\n`;
+    if (systemStatus.reason) message += `📝 **Причина:** ${systemStatus.reason}`;
+    ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
 bot.on('text', async (ctx, next) => {
