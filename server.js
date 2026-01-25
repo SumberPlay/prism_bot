@@ -12,63 +12,48 @@ const bot = new Telegraf(BOT_TOKEN);
 app.use(cors());
 app.use(express.json());
 
-// === ЦЕНТРАЛЬНАЯ БАЗА СОТРУДНИКОВ ===
+// === БАЗА ДОСТУПА (КТО может зайти на сайт) ===
 let staffDB = {
     "M4SK": { 
         pass: "5e03fcd2d70a976a6b026374da5da3f9", 
-        role: "scientific", level: 3, name: "МэнсиКейн", 
-        mc_name: "MancyKane", dept: "Научный Департамент", 
-        bio: "Ведущий специалист по изучению Объекта #001.",
-        note: "Замечена повышенная активность. Рекомендовано наблюдение."
+        role: "scientific", level: 3, name: "МэнсиКейн"
     },
     "KRMP": { 
         pass: "1bf502b835ee007957e558cbb1959ecb", 
-        role: "military", level: 2, name: "Кримпи", 
-        mc_name: "Krimpi", dept: "Военная Группа", 
-        bio: "Командир оперативной группы.",
-        note: "Прямое подчинение Совету в случае протокола 'ЗЕРО'."
+        role: "military", level: 2, name: "Кримпи"
     },
     "SUMBR": { 
         pass: "8aaa688aadaf78796f5f620a4897eeb3", 
-        role: "council", level: 5, name: "Самбер", 
-        mc_name: "SumberTheCreator", dept: "Высший Совет", 
-        bio: "Основатель P.R.I.S.M. Личность засекречена.",
-        note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Инициирует протоколы очистки."
+        role: "council", level: 5, name: "Самбер"
     },
     "MRYZE": { 
         pass: "b0eee0a274f64e6f5792b85c93321159", 
-        role: "council", level: 5, name: "Юз", 
-        mc_name: "MrYuze", dept: "Высший Совет", 
-        bio: "Глава аналитического отдела Совета.",
-        note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Ответственный за внешние связи."
+        role: "council", level: 5, name: "Юз"
     }
 };
 
+// === БАЗА НАБЛЮДЕНИЯ (ЧТО отображается в Dossier) ===
 let playerDB = {
     "M4SK": { 
-        pass: "5e03fcd2d70a976a6b026374da5da3f9", 
-        role: "scientific", level: 3, name: "МэнсиКейн", 
+        role: "scientific", level: 3, name: "ТЕст1", 
         mc_name: "m4skine_", dept: "Научный Департамент", 
         bio: "Ведущий специалист по изучению Объекта #001.",
         note: "Замечена повышенная активность. Рекомендовано наблюдение."
     },
     "KRMP": { 
-        pass: "1bf502b835ee007957e558cbb1959ecb", 
-        role: "military", level: 2, name: "Кримпи", 
+        role: "military", level: 2, name: "ТЕст2", 
         mc_name: "Krimpi", dept: "Военная Группа", 
         bio: "Командир оперативной группы.",
         note: "Прямое подчинение Совету в случае протокола 'ЗЕРО'."
     },
     "SUMBR": { 
-        pass: "8aaa688aadaf78796f5f620a4897eeb3", 
-        role: "council", level: 5, name: "Самбер", 
+        role: "council", level: 5, name: "ТЕст3", 
         mc_name: "SumberTheCreator", dept: "Высший Совет", 
         bio: "Основатель P.R.I.S.M. Личность засекречена.",
         note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Инициирует протоколы очистки."
     },
     "MRYZE": { 
-        pass: "b0eee0a274f64e6f5792b85c93321159", 
-        role: "council", level: 5, name: "Юз", 
+        role: "council", level: 5, name: "ТЕст4", 
         mc_name: "MrYuze", dept: "Высший Совет", 
         bio: "Глава аналитического отдела Совета.",
         note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Ответственный за внешние связи."
@@ -80,7 +65,7 @@ const userStates = new Map();
 
 // === API ДЛЯ САЙТА ===
 
-// 1. ЛОГИН
+// 1. ЛОГИН (ПРОВЕРКА ПО staffDB)
 app.post('/login', (req, res) => {
     const { id, pass } = req.body;
     const user = staffDB[id];
@@ -94,28 +79,28 @@ app.post('/login', (req, res) => {
 // 2. СТАТУС СИСТЕМЫ
 app.get('/status', (req, res) => res.json(systemStatus));
 
-// 3. СПИСОК ПЕРСОНАЛА (БЕЗОПАСНЫЙ)
+// 3. СПИСОК КАРТОЧЕК (БЕРЕМ ИЗ playerDB)
 app.get('/get-staff', (req, res) => {
     const safeDB = {};
-    for (let id in staffDB) {
+    for (let id in playerDB) {
         safeDB[id] = {
-            name: staffDB[id].name,
-            level: staffDB[id].level,
-            dept: staffDB[id].dept,
-            mc_name: staffDB[id].mc_name,
-            role: staffDB[id].role
+            name: playerDB[id].name,
+            level: playerDB[id].level,
+            dept: playerDB[id].dept,
+            mc_name: playerDB[id].mc_name,
+            role: playerDB[id].role
         };
     }
     res.json(safeDB);
 });
 
-// 4. ПОЛУЧЕНИЕ БИО
+// 4. ПОЛУЧЕНИЕ БИО (БЕРЕМ ИЗ playerDB)
 app.get('/get-bio/:id', (req, res) => {
-    const user = staffDB[req.params.id];
-    res.json({ bio: user ? user.bio : "ДАННЫЕ ОТСУТСТВУЮТ" });
+    const player = playerDB[req.params.id];
+    res.json({ bio: player ? player.bio : "ДАННЫЕ ОТСУТСТВУЮТ" });
 });
 
-// 5. ОТПРАВКА РАПОРТА (ИСПРАВЛЕНО)
+// 5. ОТПРАВКА РАПОРТА
 app.post('/send-report', (req, res) => {
     const { user, text, timestamp } = req.body;
     if (!text) return res.status(400).json({ success: false });
@@ -130,7 +115,7 @@ app.post('/send-report', (req, res) => {
 // 6. ЛОГ АВТОРИЗАЦИИ
 app.post('/auth-log', (req, res) => {
     const { id, name, level } = req.body;
-    const logMsg = `👤 **АВТОРИЗАЦИЯ**\n━━━━━━━━━━━━━━\nID: \`${id}\`\nИмя: **${name}**\nДопуск: **L${level}**\n━━━━━━━━━━━━━━\nСистема: Доступ разрешен.`;
+    const logMsg = `👤 **ВХОД В СИСТЕМУ**\n━━━━━━━━━━━━━━\nID: \`${id}\`\nИмя: **${name}**\nДопуск: **L${level}**\n━━━━━━━━━━━━━━\nСтатус: Сессия активна.`;
     bot.telegram.sendMessage(ADMIN_CHAT_ID, logMsg, { parse_mode: 'Markdown' });
     res.json({ success: true });
 });
@@ -138,16 +123,17 @@ app.post('/auth-log', (req, res) => {
 // === КОМАНДЫ БОТА ===
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
-    ['✍️ СТАТУС', '👥 ПЕРСОНАЛ'],
+    ['✍️ СТАТУС', '👥 ОБЪЕКТЫ'],
     ['📊 ТЕКУЩИЙ СТАТУС']
 ]).resize();
 
 bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активен.', mainMenu));
 
-bot.hears('👥 ПЕРСОНАЛ', (ctx) => {
-    let list = "📂 **РЕЕСТР СОТРУДНИКОВ:**\n\n";
-    Object.keys(staffDB).forEach(id => { 
-        list += `🔹 \`${id}\` — ${staffDB[id].name} (L${staffDB[id].level})\n`; 
+// Показываем список из playerDB
+bot.hears('👥 ОБЪЕКТЫ', (ctx) => {
+    let list = "📂 **РЕЕСТР СУБЪЕКТОВ НАБЛЮДЕНИЯ:**\n\n";
+    Object.keys(playerDB).forEach(id => { 
+        list += `🔹 \`${id}\` — ${playerDB[id].name} (L${playerDB[id].level})\n`; 
     });
     list += "\nДля правки заметки: `/set_note ID текст`";
     ctx.reply(list, { parse_mode: 'Markdown' });
@@ -158,11 +144,11 @@ bot.command('set_note', (ctx) => {
     if (args.length < 3) return ctx.reply('Формат: /set_note ID текст');
     const targetId = args[1].toUpperCase();
     const newNote = args.slice(2).join(' ');
-    if (staffDB[targetId]) {
-        staffDB[targetId].note = newNote;
-        ctx.reply(`✅ Заметка для ${staffDB[targetId].name} обновлена.`);
+    if (playerDB[targetId]) {
+        playerDB[targetId].note = newNote;
+        ctx.reply(`✅ Заметка для ${playerDB[targetId].name} обновлена.`);
     } else {
-        ctx.reply('❌ ID не найден.');
+        ctx.reply('❌ ID игрока не найден в базе наблюдения.');
     }
 });
 
@@ -197,4 +183,3 @@ bot.on('text', async (ctx, next) => {
 bot.launch().then(() => console.log('P.R.I.S.M. System Online'));
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
-
