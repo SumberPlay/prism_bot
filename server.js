@@ -134,7 +134,7 @@ bot.hears('👥 ДОСЬЕ', (ctx) => {
 bot.hears('👔 СОТРУДНИКИ', (ctx) => {
     let list = "🛡️ **СПИСОК СОТРУДНИКОВ С ДОСТУПОМ (StaffDB):**\n\n";
     Object.keys(staffDB).forEach(id => { 
-        list += `🔸 \`${id}\` — ${staffDB[id].name} (Уровень: ${staffDB[id].level}, пароль: ${staffDB[id].pass)\n`; 
+        list += `🔸 \`${id}\` — ${staffDB[id].name} (Уровень: ${staffDB[id].level}, пароль: ${staffDB[id].pass})\n`; 
     });
     ctx.reply(list, { parse_mode: 'Markdown' });
 });
@@ -170,5 +170,6 @@ bot.on('text', async (ctx, next) => {
 bot.launch().then(() => console.log('P.R.I.S.M. System Online'));
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
