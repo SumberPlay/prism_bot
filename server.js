@@ -65,7 +65,6 @@ const userStates = new Map();
 
 // === API ДЛЯ САЙТА ===
 
-// 1. ЛОГИН (ПРОВЕРКА ПО staffDB)
 app.post('/login', (req, res) => {
     const { id, pass } = req.body;
     const user = staffDB[id];
@@ -76,10 +75,8 @@ app.post('/login', (req, res) => {
     }
 });
 
-// 2. СТАТУС СИСТЕМЫ
 app.get('/status', (req, res) => res.json(systemStatus));
 
-// 3. СПИСОК КАРТОЧЕК (БЕРЕМ ИЗ playerDB)
 app.get('/get-staff', (req, res) => {
     const safeDB = {};
     for (let id in playerDB) {
@@ -94,25 +91,20 @@ app.get('/get-staff', (req, res) => {
     res.json(safeDB);
 });
 
-// 4. ПОЛУЧЕНИЕ БИО (БЕРЕМ ИЗ playerDB)
 app.get('/get-bio/:id', (req, res) => {
     const player = playerDB[req.params.id];
     res.json({ bio: player ? player.bio : "ДАННЫЕ ОТСУТСТВУЮТ" });
 });
 
-// 5. ОТПРАВКА РАПОРТА
 app.post('/send-report', (req, res) => {
     const { user, text, timestamp } = req.body;
     if (!text) return res.status(400).json({ success: false });
-
     const reportMsg = `📩 **НОВЫЙ РАПОРТ**\n━━━━━━━━━━━━━━\n👤 **От:** ${user}\n🕒 **Время:** ${timestamp}\n━━━━━━━━━━━━━━\n📝 **Текст:**\n${text}`;
-    
     bot.telegram.sendMessage(ADMIN_CHAT_ID, reportMsg, { parse_mode: 'Markdown' })
         .then(() => res.json({ success: true }))
         .catch(() => res.status(500).json({ success: false }));
 });
 
-// 6. ЛОГ АВТОРИЗАЦИИ
 app.post('/auth-log', (req, res) => {
     const { id, name, level } = req.body;
     const logMsg = `👤 **ВХОД В СИСТЕМУ**\n━━━━━━━━━━━━━━\nID: \`${id}\`\nИмя: **${name}**\nДопуск: **L${level}**\n━━━━━━━━━━━━━━\nСтатус: Сессия активна.`;
@@ -123,33 +115,28 @@ app.post('/auth-log', (req, res) => {
 // === КОМАНДЫ БОТА ===
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
-    ['✍️ СТАТУС', '👥 ОБЪЕКТЫ'],
+    ['👥 ПЕРСОНАЛ', '👔 СОТРУДНИКИ'],
     ['📊 ТЕКУЩИЙ СТАТУС']
 ]).resize();
 
 bot.start((ctx) => ctx.reply('🛡️ Терминал управления P.R.I.S.M. активен.', mainMenu));
 
-// Показываем список из playerDB
-bot.hears('👥 ОБЪЕКТЫ', (ctx) => {
-    let list = "📂 **РЕЕСТР СУБЪЕКТОВ НАБЛЮДЕНИЯ:**\n\n";
+// Список из playerDB (те, кто в досье)
+bot.hears('👥 ДОСЬЕ', (ctx) => {
+    let list = "📂 **РЕЕСТР СУБЪЕКТОВ НАБЛЮДЕНИЯ (PlayerDB):**\n\n";
     Object.keys(playerDB).forEach(id => { 
         list += `🔹 \`${id}\` — ${playerDB[id].name} (L${playerDB[id].level})\n`; 
     });
-    list += "\nДля правки заметки: `/set_note ID текст`";
     ctx.reply(list, { parse_mode: 'Markdown' });
 });
 
-bot.command('set_note', (ctx) => {
-    const args = ctx.message.text.split(' ');
-    if (args.length < 3) return ctx.reply('Формат: /set_note ID текст');
-    const targetId = args[1].toUpperCase();
-    const newNote = args.slice(2).join(' ');
-    if (playerDB[targetId]) {
-        playerDB[targetId].note = newNote;
-        ctx.reply(`✅ Заметка для ${playerDB[targetId].name} обновлена.`);
-    } else {
-        ctx.reply('❌ ID игрока не найден в базе наблюдения.');
-    }
+// Список из staffDB (те, кто имеет доступ)
+bot.hears('👔 СОТРУДНИКИ', (ctx) => {
+    let list = "🛡️ **СПИСОК СОТРУДНИКОВ С ДОСТУПОМ (StaffDB):**\n\n";
+    Object.keys(staffDB).forEach(id => { 
+        list += `🔸 \`${id}\` — ${staffDB[id].name} (Уровень: ${staffDB[id].level})\n`; 
+    });
+    ctx.reply(list, { parse_mode: 'Markdown' });
 });
 
 bot.hears('🔴 RED CODE', (ctx) => {
