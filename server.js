@@ -23,7 +23,7 @@ const trackMsg = (ctx, msg) => {
 // === БАЗЫ ДАННЫХ ===
 let staffDB = {
     "M4SK": { pass: "5e03fcd2d70a976a6b026374da5da3f9", role: "scientific", level: 3, name: "МэнсиКейн", dept: "НАУЧНЫЙ ОТДЕЛ", bio: "ИССЛЕДОВАТЕЛЬ", note: "ДОПУСК К СЕКТОРУ B" },
-    "KRMP": { pass: "1bf502b835ee007957e558cbb1959ecb", role: "military", level: 2, name: "Кримпи", dept: "ВГР", bio: "ГЛАВА ВГР "ES"", note: "ПАТРУЛЬ ПЕРИМЕТРА" },
+    "KRMP": { pass: "1bf502b835ee007957e558cbb1959ecb", role: "military", level: 2, name: "Кримпи", dept: "ВГР", bio: "ГЛАВА ВГР ES", note: "ПАТРУЛЬ ПЕРИМЕТРА" },
     "SUMBR": { pass: "8aaa688aadaf78796f5f620a4897eeb3", role: "council", level: 5, name: "Самбер", dept: "ВЫСШИЙ СОВЕТ", bio: "ОСНОВАТЕЛЬ P.R.I.S.M.", note: "ПОЛНЫЙ ДОСТУП" },
     "MRYZE": { pass: "b0eee0a274f64e6f5792b85c93321159", role: "council", level: 5, name: "Юз", dept: "ВЫСШИЙ СОВЕТ", bio: "ГЛАВА АНАЛИТИКИ", note: "КУРАТОР ПРОЕКТОВ" },
     "RAY": { pass: "c20b11e4ce0f2d30e2d4d4f4e4089192", role: "council", level: 5, name: "Рей", dept: "ВЫСШИЙ СОВЕТ", bio: "ЭПШТЕЙН", note: "КУРАТОР ПРОЕКТОВ" },
@@ -161,5 +161,6 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
