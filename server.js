@@ -30,7 +30,7 @@ let staffDB = {
         name: "МэнсиКейн", 
         dept: "НАУЧНЫЙ ОТДЕЛ", 
         spec: "АНОМАЛИИ", 
-        joined: "24.01.2026", 
+        joined: "03.01.2026", 
         bio: "ИССЛЕДОВАТЕЛЬ", 
         note: "ДОПУСК К СЕКТОРУ B" 
     },
@@ -42,7 +42,7 @@ let staffDB = {
         name: "Кримпи", 
         dept: "ВГР", 
         spec: "ТАКТИКА", 
-        joined: "24.01.2026", 
+        joined: "03.01.2026", 
         bio: "ГЛАВА ВГР ES", 
         note: "ПАТРУЛЬ ПЕРИМЕТРА" 
     },
@@ -54,7 +54,7 @@ let staffDB = {
         name: "Самбер", 
         dept: "ВЫСШИЙ СОВЕТ", 
         spec: "КУРАТОР", 
-        joined: "01.01.2026", 
+        joined: "С основания", 
         bio: "ОСНОВАТЕЛЬ P.R.I.S.M.", 
         note: "ПОЛНЫЙ ДОСТУП" 
     },
@@ -66,7 +66,7 @@ let staffDB = {
         name: "Юз", 
         dept: "ВЫСШИЙ СОВЕТ", 
         spec: "СТРАТЕГ", 
-        joined: "01.01.2026", 
+        joined: "С основания", 
         bio: "ГЛАВА АНАЛИТИКИ", 
         note: "КУРАТОР ПРОЕКТОВ" 
     },
@@ -78,7 +78,7 @@ let staffDB = {
         name: "Рей", 
         dept: "ВЫСШИЙ СОВЕТ", 
         spec: "КУРАТОР", 
-        joined: "24.01.2026", 
+        joined: "Данные отсутствуют", 
         bio: "ЭПШТЕЙН", 
         note: "КУРАТОР ПРОЕКТОВ" 
     },
@@ -90,7 +90,7 @@ let staffDB = {
         name: "Морис", 
         dept: "НАУЧНЫЙ ОТДЕЛ", 
         spec: "ГЛАВА ОНГ", 
-        joined: "24.01.2026", 
+        joined: "25.01.2026", 
         bio: "ГЛАВА ОНГ", 
         note: "КУРАТОР ОНГ" 
     }
@@ -227,6 +227,7 @@ bot.on('text', async (ctx, next) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
 
