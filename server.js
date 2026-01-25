@@ -44,6 +44,37 @@ let staffDB = {
     }
 };
 
+let playerDB = {
+    "M4SK": { 
+        pass: "5e03fcd2d70a976a6b026374da5da3f9", 
+        role: "scientific", level: 3, name: "МэнсиКейн", 
+        mc_name: "m4skine_", dept: "Научный Департамент", 
+        bio: "Ведущий специалист по изучению Объекта #001.",
+        note: "Замечена повышенная активность. Рекомендовано наблюдение."
+    },
+    "KRMP": { 
+        pass: "1bf502b835ee007957e558cbb1959ecb", 
+        role: "military", level: 2, name: "Кримпи", 
+        mc_name: "Krimpi", dept: "Военная Группа", 
+        bio: "Командир оперативной группы.",
+        note: "Прямое подчинение Совету в случае протокола 'ЗЕРО'."
+    },
+    "SUMBR": { 
+        pass: "8aaa688aadaf78796f5f620a4897eeb3", 
+        role: "council", level: 5, name: "Самбер", 
+        mc_name: "SumberTheCreator", dept: "Высший Совет", 
+        bio: "Основатель P.R.I.S.M. Личность засекречена.",
+        note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Инициирует протоколы очистки."
+    },
+    "MRYZE": { 
+        pass: "b0eee0a274f64e6f5792b85c93321159", 
+        role: "council", level: 5, name: "Юз", 
+        mc_name: "MrYuze", dept: "Высший Совет", 
+        bio: "Глава аналитического отдела Совета.",
+        note: "КЛЮЧ_ДОСТУПА: ВСЕ_СЕКТОРА. Ответственный за внешние связи."
+    }
+};
+
 let systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
 const userStates = new Map();
 
@@ -166,3 +197,4 @@ bot.on('text', async (ctx, next) => {
 bot.launch().then(() => console.log('P.R.I.S.M. System Online'));
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
