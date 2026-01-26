@@ -24,6 +24,33 @@ const trackMsg = (ctx, msg) => {
     chatHistory.get(ctx.chat.id).push(msg.message_id);
 };
 
+// Теперь IP берется из секретных настроек Render
+const MC_SERVER_IP = process.env.MC_SERVER_IP; 
+
+app.get('/mc-status', async (req, res) => {
+    // Если IP не настроен, выдаем ошибку в консоль, чтобы ты знал
+    if (!MC_SERVER_IP) {
+        console.error("ERROR: MC_SERVER_IP is not defined in Environment Variables");
+        return res.status(500).json({ error: "Server IP not configured" });
+    }
+
+    try {
+        const response = await axios.get(`https://api.mcsrvstat.us/3/${MC_SERVER_IP}`);
+        const data = response.data; // Исправлено: axios использует .data
+        
+        // Получаем список игроков. API mcsrvstat.us отдает массив объектов {name, uuid}
+        const onlinePlayers = data.players?.list ? data.players.list.map(p => p.name) : [];
+        
+        res.json({ 
+            serverOnline: data.online, 
+            onlinePlayers: onlinePlayers 
+        });
+    } catch (error) {
+        console.error("MC_API_ERROR:", error.message);
+        res.status(500).json({ error: "Failed to fetch MC status" });
+    }
+});
+
 // === БАЗЫ ДАННЫХ ===
 let staffDB = {
     "M4SK": { pass: "5e03fcd2d70a976a6b026374da5da3f9", role: "scientific", mc_name: "M4skine_", level: 3, name: "МэнсиКейн", dept: "НАУЧНЫЙ ОТДЕЛ", spec: "АНОМАЛИИ", joined: "03.01.2026", bio: "ИССЛЕДОВАТЕЛЬ", note: "ДОПУСК К СЕКТОРУ B" },
@@ -274,6 +301,7 @@ bot.action(/^delete_note_(.+)$/, async (ctx) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
 
