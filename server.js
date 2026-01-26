@@ -111,7 +111,43 @@ bot.hears('🧹 ОЧИСТКА', async (ctx) => {
     const msg = await ctx.reply('🧹 Терминал очищен.', mainMenu);
     trackMsg(ctx, msg);
 });
+bot.hears('📂 АРХИВ', async (ctx) => {
+    // Ссылка на твой файл (Date.now нужен, чтобы не брать старую версию из кэша)
+    const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
+    const headers = { 
+        Authorization: `token ${process.env.GITHUB_TOKEN}`, 
+        Accept: 'application/vnd.github.v3+json' 
+    };
 
+    try {
+        await ctx.reply('📂 Подключаюсь к архивам P.R.I.S.M...');
+        const res = await axios.get(url, { headers });
+        
+        // Декодируем содержимое файла
+        const content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
+
+        if (content.length === 0) {
+            return ctx.reply('📭 Архив пуст.', mainMenu);
+        }
+
+        // Показываем последние 5 записей, чтобы не спамить в чат
+        let message = "📖 **ПОСЛЕДНИЕ ЗАПИСИ АРХИВА:**\n━━━━━━━━━━━━━━\n";
+        
+        content.slice(-5).reverse().forEach((note) => {
+            message += `🔹 **${note.title}** (L${note.level})\n`;
+            message += `🗓 _${note.date}_\n`;
+            message += `📝 ${note.content}\n`;
+            message += `━━━━━━━━━━━━━━\n`;
+        });
+
+        const msg = await ctx.reply(message, { parse_mode: 'Markdown' });
+        trackMsg(ctx, msg);
+
+    } catch (e) {
+        console.error("ARCHIVE_ERROR:", e.response?.data || e.message);
+        ctx.reply('❌ Не удалось получить доступ к архиву на GitHub. Проверь токены.');
+    }
+});
 bot.hears('👥 ДОСЬЕ', async (ctx) => {
     let list = "📂 **РЕЕСТР СУБЪЕКТОВ:**\n\n";
     Object.keys(playerDB).forEach(id => { list += `🔹 \`${id}\` — ${playerDB[id].name} (L${playerDB[id].level})\n`; });
@@ -209,4 +245,5 @@ async function addNoteToArchive(newNote) {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
