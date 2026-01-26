@@ -264,8 +264,31 @@ bot.on('text', async (ctx, next) => {
     }
 });
 async function addNoteToArchive(newNote) {
+    // ВАЖНО: FILE_PATH должен быть без лишних слешей в начале, например: 'data/archive.json'
     const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
-    const headers = { Authorization: `token ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' };
+    const headers = { 
+        Authorization: `token ${process.env.GITHUB_TOKEN}`, 
+        Accept: 'application/vnd.github.v3+json' 
+    };
+
+    try {
+        const res = await axios.get(url, { headers });
+        const sha = res.data.sha;
+        let content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
+        
+        content.push(newNote);
+
+        await axios.put(url, {
+            message: `Entry added: ${newNote.title}`,
+            content: Buffer.from(JSON.stringify(content, null, 4)).toString('base64'),
+            sha: sha
+        }, { headers });
+        return true;
+    } catch (e) {
+        console.error("GITHUB_API_ERROR:", e.response?.data || e.message);
+        return false;
+    }
+}
 
     try {
         const res = await axios.get(url, { headers });
@@ -289,6 +312,7 @@ async function addNoteToArchive(newNote) {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
 
