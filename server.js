@@ -112,7 +112,6 @@ bot.hears('🧹 ОЧИСТКА', async (ctx) => {
     trackMsg(ctx, msg);
 });
 bot.hears('📂 АРХИВ', async (ctx) => {
-    // Ссылка на твой файл (Date.now нужен, чтобы не брать старую версию из кэша)
     const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
     const headers = { 
         Authorization: `token ${process.env.GITHUB_TOKEN}`, 
@@ -120,32 +119,28 @@ bot.hears('📂 АРХИВ', async (ctx) => {
     };
 
     try {
-        await ctx.reply('📂 Подключаюсь к архивам P.R.I.S.M...');
         const res = await axios.get(url, { headers });
-        
-        // Декодируем содержимое файла
         const content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
 
-        if (content.length === 0) {
-            return ctx.reply('📭 Архив пуст.', mainMenu);
+        if (content.length === 0) return ctx.reply('📭 Архив пуст.');
+
+        await ctx.reply('📖 **ПОСЛЕДНИЕ ЗАПИСИ:**', { parse_mode: 'Markdown' });
+
+        // Берем последние 5 записей
+        for (const note of content.slice(-5).reverse()) {
+            const txt = `🔹 **${note.title}** (L${note.level})\n🗓 _${note.date}_\n\n${note.content}`;
+            
+            // Создаем инлайн-кнопку удаления с ID записи
+            const msg = await ctx.reply(txt, {
+                parse_mode: 'Markdown',
+                ...Markup.inlineKeyboard([
+                    Markup.button.callback('🗑 Удалить', `delete_note_${note.id}`)
+                ])
+            });
+            trackMsg(ctx, msg);
         }
-
-        // Показываем последние 5 записей, чтобы не спамить в чат
-        let message = "📖 **ПОСЛЕДНИЕ ЗАПИСИ АРХИВА:**\n━━━━━━━━━━━━━━\n";
-        
-        content.slice(-5).reverse().forEach((note) => {
-            message += `🔹 **${note.title}** (L${note.level})\n`;
-            message += `🗓 _${note.date}_\n`;
-            message += `📝 ${note.content}\n`;
-            message += `━━━━━━━━━━━━━━\n`;
-        });
-
-        const msg = await ctx.reply(message, { parse_mode: 'Markdown' });
-        trackMsg(ctx, msg);
-
     } catch (e) {
-        console.error("ARCHIVE_ERROR:", e.response?.data || e.message);
-        ctx.reply('❌ Не удалось получить доступ к архиву на GitHub. Проверь токены.');
+        ctx.reply('❌ Ошибка доступа к GitHub.');
     }
 });
 bot.hears('👥 ДОСЬЕ', async (ctx) => {
@@ -241,9 +236,44 @@ async function addNoteToArchive(newNote) {
         return false;
     }
 }
+bot.action(/^delete_note_(.+)$/, async (ctx) => {
+    const noteId = ctx.match[1]; // Получаем ID из кнопки
+    
+    // 1. Сначала уведомляем, что процесс пошел
+    await ctx.answerCbQuery('Удаление...');
 
+    const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
+    const headers = { 
+        Authorization: `token ${process.env.GITHUB_TOKEN}`, 
+        Accept: 'application/vnd.github.v3+json' 
+    };
+
+    try {
+        // Получаем текущий файл
+        const res = await axios.get(url, { headers });
+        const sha = res.data.sha;
+        let content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
+
+        // Фильтруем: оставляем всё, кроме записи с нужным ID
+        const filteredContent = content.filter(n => n.id !== noteId);
+
+        // Отправляем обновленный файл обратно
+        await axios.put(url, {
+            message: `Deleted record: ${noteId}`,
+            content: Buffer.from(JSON.stringify(filteredContent, null, 4)).toString('base64'),
+            sha: sha
+        }, { headers });
+
+        // 2. Уведомляем об успехе и правим сообщение
+        await ctx.editMessageText('🗑 Запись удалена из базы P.R.I.S.M.');
+    } catch (e) {
+        console.error(e);
+        await ctx.reply('❌ Не удалось удалить запись.');
+    }
+});
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
