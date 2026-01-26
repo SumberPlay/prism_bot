@@ -55,11 +55,21 @@ app.post('/login', (req, res) => {
 app.get('/get-admin-staff', (req, res) => res.json(staffDB));
 app.get('/get-staff', (req, res) => res.json(playerDB));
 
-app.post('/send-report', (req, res) => {
+app.post('/send-report', async (req, res) => { // Добавили async
     const { user, text, timestamp } = req.body;
-    const msg = `📩 **НОВЫЙ РАПОРТ**\n━━━━━━━━━━━━━━\n👤 **От:** ${user}\n🕒 **Время:** ${timestamp}\n━━━━━━━━━━━━━━\n📝 **Текст:**\n${text}`;
-    bot.telegram.sendMessage(ADMIN_CHAT_ID, msg, { parse_mode: 'Markdown' });
-    res.json({ success: true });
+    
+    // Упрощаем сообщение, убираем Markdown, чтобы символы * или _ не вызывали ошибок
+    const msg = `📩 НОВЫЙ РАПОРТ\n👤 От: ${user}\n🕒 Время: ${timestamp}\n📝 Текст: ${text}`;
+
+    try {
+        // Ждем, пока Telegram реально примет сообщение
+        await bot.telegram.sendMessage(ADMIN_CHAT_ID, msg);
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Ошибка отправки в TG:", error);
+        // Если TG не принял — возвращаем ошибку, чтобы сайт не писал "Отправлено"
+        res.status(500).json({ success: false, error: "Telegram API Error" });
+    }
 });
 
 app.post('/auth-log', (req, res) => {
@@ -199,3 +209,4 @@ async function addNoteToArchive(newNote) {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
