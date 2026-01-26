@@ -151,6 +151,7 @@ app.get('/status', (req, res) => res.json(systemStatus));
 // === КОМАНДЫ БОТА ===
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
+    ['📝 СОЗДАТЬ ЗАПИСЬ', '📂 АРХИВ'],
     ['👥 ДОСЬЕ', '👔 СОТРУДНИКИ'],
     ['📊 ТЕКУЩИЙ СТАТУС', '🧹 ОЧИСТКА']
 ]).resize();
@@ -212,9 +213,19 @@ bot.hears('🟢 STABLE', async (ctx) => {
     const msg = await ctx.reply('✅ Система стабилизирована.', mainMenu);
     trackMsg(ctx, msg);
 });
+// Старт процесса
+bot.hears('📝 СОЗДАТЬ ЗАПИСЬ', async (ctx) => {
+    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return;
+    userStates.set(ctx.from.id, { step: 'WAIT_TITLE' });
+    await ctx.reply('📄 ВВЕДИТЕ ЗАГОЛОВОК ЗАПИСИ:', Markup.removeKeyboard());
+});
 
+// Обработка шагов
 bot.on('text', async (ctx, next) => {
     const state = userStates.get(ctx.from.id);
+    if (!state) return next();
+
+    // 1. ЛОГИКА RED CODE (КРАТКИЙ СТЕЙТ)
     if (state === 'WAITING_FOR_REASON') {
         systemStatus = { state: "RED", label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ", color: "#ff4444", reason: ctx.message.text };
         userStates.delete(ctx.from.id);
@@ -223,12 +234,62 @@ bot.on('text', async (ctx, next) => {
         bot.telegram.sendMessage(ADMIN_CHAT_ID, `‼️ **ALARM**\nПричина: ${systemStatus.reason}`);
         return;
     }
-    return next();
-});
 
+    // 2. ЛОГИКА СОЗДАНИЯ ЗАПИСИ (ПОШАГОВЫЙ ОБЪЕКТ)
+    if (state.step === 'WAIT_TITLE') {
+        userStates.set(ctx.from.id, { step: 'WAIT_LEVEL', title: ctx.message.text });
+        await ctx.reply('🔑 УСТАНОВИТЕ УРОВЕНЬ ДОСТУПА (1-5):');
+        
+    } else if (state.step === 'WAIT_LEVEL') {
+        const lvl = parseInt(ctx.message.text);
+        if (isNaN(lvl) || lvl < 1 || lvl > 5) return ctx.reply("Введите число от 1 до 5!");
+        
+        userStates.set(ctx.from.id, { ...state, step: 'WAIT_CONTENT', level: lvl });
+        await ctx.reply('✍️ ВВЕДИТЕ ТЕКСТ ЗАПИСИ:');
+
+    } else if (state.step === 'WAIT_CONTENT') {
+        const finalNote = {
+            id: `L${Date.now()}`,
+            title: state.title,
+            level: state.level,
+            content: ctx.message.text,
+            date: new Date().toLocaleDateString('ru-RU')
+        };
+
+        await ctx.reply('⏳ Сохранение в базу P.R.I.S.M...');
+        const success = await addNoteToArchive(finalNote);
+        
+        userStates.delete(ctx.from.id);
+        await ctx.reply(success ? '✅ ЗАПИСЬ УСПЕШНО ДОБАВЛЕНА' : '❌ ОШИБКА ГИТХАБА', mainMenu);
+    }
+});
+async function addNoteToArchive(newNote) {
+    const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
+    const headers = { Authorization: `token ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' };
+
+    try {
+        const res = await axios.get(url, { headers });
+        const sha = res.data.sha;
+        // Декодируем текущий архив или создаем пустой массив, если файл пуст
+        let content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
+        
+        content.push(newNote); // Добавляем новую запись
+
+        await axios.put(url, {
+            message: `New entry: ${newNote.title}`,
+            content: Buffer.from(JSON.stringify(content, null, 4)).toString('base64'),
+            sha: sha
+        }, { headers });
+        return true;
+    } catch (e) {
+        console.error("GH_ERROR:", e.response?.data || e.message);
+        return false;
+    }
+}
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
 
