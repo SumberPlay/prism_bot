@@ -84,26 +84,37 @@ app.delete('/remove-task', async (req, res) => {
 });
 
 // 3. Регистрация нового сотрудника в таблицу staff
+// 3. Регистрация нового сотрудника (ИСПРАВЛЕНО)
 app.post('/register-staff', async (req, res) => {
     try {
+        const { id, name, mc_name, level } = req.body;
         const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+
+        // 1. Проверяем, не занят ли ID
+        const check = await sbGet('staff', `id=eq.${id}`);
+        if (check.data && check.data.length > 0) {
+            return res.status(400).json({ error: "ID_ALREADY_EXISTS" });
+        }
+
+        // 2. Формируем объект (все поля, которые есть в твоей таблице)
         const newStaff = {
-            id: req.body.id,
-            name: req.body.name,
-            mc_name: req.body.mc_name,
-            level: parseInt(req.body.level),
-            password: Math.random().toString(36).slice(-6), // Генерируем случайный пароль
+            id: id.toUpperCase(), // Принудительно в верхний регистр
+            name: name,
+            mc_name: mc_name,
+            level: parseInt(level), // Превращаем строку в число
+            password: Math.random().toString(36).slice(-6), // Генерируем ключ (6 знаков)
             dept: "SECURITY",
-            note: "НОВЫЙ ОБЪЕКТ"
+            note: "REGISTERED_VIA_COUNCIL"
         };
 
+        // 3. Отправляем в Supabase
         await axios.post(`${fullUrl}/staff`, newStaff, { headers: SB_HEADERS });
         
-        console.log(`[COUNCIL] Сотрудник ${newStaff.id} внесен в Supabase`);
-        res.status(200).json({ success: true });
+        console.log(`[COUNCIL] Объект ${newStaff.id} успешно зарегистрирован.`);
+        res.status(200).json({ success: true, password: newStaff.password });
     } catch (e) {
-        console.error("Ошибка регистрации:", e.response?.data || e.message);
-        res.status(500).json({ error: "Registration Error" });
+        console.error("ОШИБКА РЕГИСТРАЦИИ:", e.response?.data || e.message);
+        res.status(500).json({ error: "Registration failed", details: e.response?.data });
     }
 });
 
@@ -111,16 +122,23 @@ app.post('/register-staff', async (req, res) => {
 app.post('/delete-staff', async (req, res) => {
     try {
         const { staff_id } = req.body;
+        if (!staff_id) return res.status(400).json({ error: "ID_REQUIRED" });
+
         const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
 
-        // Сначала удаляем все задачи этого сотрудника (каскадом)
-        await axios.delete(`${fullUrl}/staff_tasks?staff_id=eq.${staff_id}`, { headers: SB_HEADERS });
-        // Затем удаляем самого сотрудника
-        await axios.delete(`${fullUrl}/staff?id=eq.${staff_id}`, { headers: SB_HEADERS });
+        console.log(`[COUNCIL] Запуск протокола удаления объекта: ${staff_id}`);
 
+        // ШАГ 1: Удаляем задачи (чтобы не было конфликта связей)
+        await axios.delete(`${fullUrl}/staff_tasks?staff_id=eq.${staff_id}`, { headers: SB_HEADERS });
+        
+        // ШАГ 2: Удаляем самого сотрудника
+        const response = await axios.delete(`${fullUrl}/staff?id=eq.${staff_id}`, { headers: SB_HEADERS });
+
+        console.log(`[COUNCIL] Объект ${staff_id} успешно стерт из реестра.`);
         res.status(200).json({ success: true });
     } catch (e) {
-        res.status(500).json({ error: "Termination Error" });
+        console.error("ОШИБКА УДАЛЕНИЯ:", e.response?.data || e.message);
+        res.status(500).json({ error: "Termination failed", details: e.message });
     }
 });
 // --- API ДЛЯ САЙТА ---
@@ -409,6 +427,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
