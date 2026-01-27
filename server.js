@@ -36,6 +36,11 @@ const sbGet = async (table, params = "") => {
     return axios.get(`${fullUrl}/${table}?${params}`, { headers: SB_HEADERS });
 };
 
+// Главная страница (чтобы не было "Cannot GET /")
+app.get('/', (req, res) => {
+    res.send('<h1>P.R.I.S.M. API CORE</h1><p>Status: ONLINE</p>');
+});
+
 // --- API ДЛЯ САЙТА ---
 app.post('/login', async (req, res) => {
     try {
@@ -214,6 +219,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
