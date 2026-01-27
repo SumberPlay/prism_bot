@@ -51,11 +51,44 @@ app.post('/login', async (req, res) => {
     } catch (e) { res.status(500).json({ error: "DB Error" }); }
 });
 
+// Получение сотрудников вместе с их задачами
 app.get('/get-admin-staff', async (req, res) => {
     try {
-        const { data } = await sbGet('staff', 'order=level.desc');
-        res.json(data);
-    } catch (e) { res.status(500).json([]); }
+        // Получаем всех сотрудников
+        const { data: staff } = await sbGet('staff', 'order=level.desc');
+        // Получаем все задачи
+        const { data: tasks } = await sbGet('staff_tasks');
+
+        // Объединяем: добавляем каждому сотруднику массив его задач
+        const fullData = staff.map(member => ({
+            ...member,
+            tasks: tasks
+                .filter(t => t.staff_id === member.id)
+                .map(t => ({ text: t.task_text, done: t.is_done }))
+        }));
+
+        res.json(fullData);
+    } catch (e) {
+        res.status(500).json([]);
+    }
+});
+
+// Отметить задачу как выполненную
+app.post('/complete-task', async (req, res) => {
+    try {
+        const { staff_id, task_text } = req.body;
+        const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+
+        // Обновляем статус is_done для конкретной задачи этого сотрудника
+        await axios.patch(`${fullUrl}/staff_tasks?staff_id=eq.${staff_id}&task_text=eq.${task_text}`, 
+        { is_done: true }, 
+        { headers: SB_HEADERS });
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Ошибка обновления задачи:", e);
+        res.status(500).json({ success: false });
+    }
 });
 
 app.get('/get-staff', async (req, res) => {
@@ -115,7 +148,7 @@ app.get('/get-anomalies', async (req, res) => {
 // --- КОМАНДЫ БОТА ---
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
-    ['📝 СОЗДАТЬ ЗАПИСЬ', '📂 АРХИВ'],
+    ['📝 СОЗДАТЬ ЗАПИСЬ', '📂 АРХИВ', '📜 НОВАЯ ЗАДАЧА'],
     ['👥 ИГРОКИ', '👔 ПЕРСОНАЛ', '⚠️ АНОМАЛИИ'],
     ['📊 СТАТУС', '🧹 ОЧИСТКА']
 ]).resize();
@@ -168,7 +201,13 @@ bot.hears('📂 АРХИВ', async (ctx) => {
         }
     } catch (e) { ctx.reply('❌ Ошибка доступа к архиву.'); }
 });
-
+bot.hears('🧹 СБРОС ЗАДАЧ', async (ctx) => {
+    try {
+        const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+        await axios.delete(`${fullUrl}/staff_tasks?is_done=eq.true`, { headers: SB_HEADERS });
+        ctx.reply("✅ Все выполненные директивы удалены из архива.");
+    } catch (e) { ctx.reply("❌ Ошибка очистки."); }
+});
 bot.action(/^del_(.+)$/, async (ctx) => {
     try {
         const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
@@ -187,7 +226,29 @@ bot.hears('📝 СОЗДАТЬ ЗАПИСЬ', (ctx) => {
 bot.on('text', async (ctx, next) => {
     const state = userStates.get(ctx.from.id);
     if (!state || typeof state === 'string') return next();
+    // ... внутри bot.on('text') ...
 
+    if (state.step === 'TASK_USER') {
+        userStates.set(ctx.from.id, { ...state, step: 'TASK_TEXT', targetId: ctx.message.text.toUpperCase() });
+        return ctx.reply(`Введите текст директивы для ${ctx.message.text}:`);
+    }
+
+    if (state.step === 'TASK_TEXT') {
+        try {
+            const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+            await axios.post(`${fullUrl}/staff_tasks`, {
+                staff_id: state.targetId,
+                task_text: ctx.message.text,
+                is_done: false
+            }, { headers: SB_HEADERS });
+
+            ctx.reply(`✅ Директива для ${state.targetId} внесена в реестр.`, mainMenu);
+    } catch (e) {
+        ctx.reply("❌ Ошибка. Убедитесь, что ID сотрудника верен.");
+    }
+    userStates.delete(ctx.from.id);
+    return;
+}
     if (state.step === 'TITLE') {
         userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
         ctx.reply("Уровень доступа (1-5):");
@@ -231,7 +292,10 @@ bot.hears('🟢 STABLE', (ctx) => {
 bot.hears('📊 СТАТУС', (ctx) => {
     ctx.reply(`📊 СТАТУС: ${systemStatus.label}\n${systemStatus.reason ? 'Причина: ' + systemStatus.reason : ''}`);
 });
-
+bot.hears('📜 НОВАЯ ЗАДАЧА', (ctx) => {
+    userStates.set(ctx.from.id, { step: 'TASK_USER' });
+    ctx.reply("Введите ID сотрудника (напр. AGENT_01):", Markup.removeKeyboard());
+});
 bot.hears('🧹 ОЧИСТКА', async (ctx) => {
     const chatId = ctx.chat.id;
     const lastMsgId = ctx.message.message_id;
@@ -263,6 +327,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
