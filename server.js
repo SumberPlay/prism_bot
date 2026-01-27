@@ -41,6 +41,20 @@ app.get('/', (req, res) => {
     res.send('<h1>P.R.I.S.M. API CORE</h1><p>Status: ONLINE</p>');
 });
 
+// ПРИМЕР: Добавление задачи
+app.post('/add-task', (req, res) => {
+    const { staff_id, task_text } = req.body;
+    // Логика: найти в базе юзера по id и пушнуть в массив tasks новый объект {text: task_text, done: false}
+    res.sendStatus(200);
+});
+
+// ПРИМЕР: Регистрация сотрудника
+app.post('/register-staff', (req, res) => {
+    const newStaff = req.body; // {id, name, mc_name, level, tasks: []}
+    // Логика: сохранить в БД
+    res.sendStatus(200);
+});
+
 // --- API ДЛЯ САЙТА ---
 app.post('/login', async (req, res) => {
     try {
@@ -327,6 +341,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
