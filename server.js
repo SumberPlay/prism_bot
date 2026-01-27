@@ -111,6 +111,27 @@ app.post('/delete-staff', async (req, res) => {
 
 app.get('/status', (req, res) => res.json(systemStatus));
 
+app.post('/complete-task', async (req, res) => {
+    try {
+        const { staff_id, task_text } = req.body;
+        const fullUrl = getFullSbUrl(); // Используем функцию для получения URL
+
+        // ВАЖНО: используем encodeURIComponent для task_text, так как там есть пробелы!
+        const query = `staff_id=eq.${staff_id}&task_text=eq.${encodeURIComponent(task_text)}`;
+        
+        await axios.patch(`${fullUrl}/staff_tasks?${query}`, 
+            { is_done: true }, 
+            { headers: SB_HEADERS }
+        );
+
+        console.log(`[SYSTEM] Задача "${task_text}" отмечена как выполненная для ${staff_id}`);
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Ошибка обновления задачи:", e.response?.data || e.message);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.post('/send-report', async (req, res) => {
     try {
         const { user, text, timestamp } = req.body;
@@ -245,3 +266,4 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
