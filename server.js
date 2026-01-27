@@ -228,27 +228,24 @@ bot.hears('🟢 STABLE', (ctx) => {
 bot.hears('👔 ПЕРСОНАЛ', async (ctx) => {
     try {
         const { data } = await sbGet('staff', 'order=level.desc');
-        
-        // Формируем текст с использованием HTML тегов
         let text = "<b>👔 СПИСОК СОТРУДНИКОВ:</b>\n\n";
         
         data.forEach(u => {
-            // Экранируем возможные < и > в именах, чтобы HTML не сломался
-            const safeName = u.name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            const safeId = u.id.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // Экранируем возможные скобки в именах, чтобы HTML не "съел" их
+            const name = u.name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const id = u.id.toUpperCase();
             
-            text += `🔸 <code>${safeId}</code> — ${safeName} (L${u.level})\n`;
+            text += `🔸 <code>${id}</code> — ${name} (L${u.level})\n`;
+            // Используем официальный тег спойлера для HTML
             text += `Ключ: <tg-spoiler>${u.password}</tg-spoiler>\n\n`;
         });
 
-        // Используем parse_mode: 'HTML'
         await ctx.reply(text, { parse_mode: 'HTML' });
     } catch (e) {
         console.error("Ошибка вывода персонала:", e);
         ctx.reply("❌ Ошибка доступа к базе данных.");
     }
 });
-
 bot.hears('📊 СТАТУС', (ctx) => {
     ctx.reply(`📊 СТАТУС: ${systemStatus.label}\n${systemStatus.reason ? 'Причина: ' + systemStatus.reason : ''}`);
 });
@@ -281,5 +278,6 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
