@@ -151,7 +151,8 @@ bot.hears('📂 АРХИВ', async (ctx) => {
     const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
     const headers = { 
         Authorization: `token ${process.env.GITHUB_TOKEN}`, 
-        Accept: 'application/vnd.github.v3+json' 
+        Accept: 'application/vnd.github.v3+json',
+        'User-Agent': 'P-R-I-S-M-Bot'
     };
 
     try {
@@ -310,6 +311,7 @@ bot.action(/^delete_note_(.+)$/, async (ctx) => {
 bot.launch();
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`API port: ${PORT}`));
+
 
 
 
