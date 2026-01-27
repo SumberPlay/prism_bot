@@ -78,11 +78,13 @@ bot.hears('👔 ПЕРСОНАЛ', async (ctx) => {
         const { data } = await sbGet('staff', 'order=level.desc');
         let text = "👔 *СПИСОК СОТРУДНИКОВ:*\n\n";
         data.forEach(u => {
-            text += `🔸 \`${u.id}\` — ${u.name} \(L${u.level}\)\nКлюч: ||${u.password || 'не задан'}||\n\n`;
+            // Используем обычный Markdown. 
+            // В нем нет ||спойлеров||, поэтому для скрытия пароля используем `косую черту` или просто пишем текстом
+            text += `🔸 \`${u.id}\` — ${u.name} (L${u.level})\nКлюч: \`${u.password || 'не задан'}\` \n\n`;
         });
-        ctx.reply(text, { parse_mode: 'MarkdownV2' });
+        ctx.reply(text, { parse_mode: 'Markdown' }); 
     } catch (e) {
-        ctx.reply("❌ Ошибка: Проверьте SUPABASE_URL и KEY в настройках Render.");
+        ctx.reply("❌ Ошибка базы данных.");
     }
 });
 
@@ -190,3 +192,4 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
