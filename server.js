@@ -164,7 +164,22 @@ app.post('/send-report', async (req, res) => {
         res.json({ success: true });
     } catch (e) { res.status(500).json({ success: false }); }
 });
-
+// Эндпоинт для ARCHIVE_EXPLORER (тянет данные из таблицы игроков)
+app.get('/get-staff', async (req, res) => {
+    try {
+        // Мы намеренно обращаемся к таблице 'players', 
+        // но оставляем адрес '/get-staff' для совместимости с твоим HTML
+        const { data } = await sbGet('players', 'order=level.asc');
+        
+        if (!data) return res.json([]);
+        
+        console.log(`[SYSTEM] Загружено ${data.length} анкет из таблицы players`);
+        res.json(data);
+    } catch (e) {
+        console.error("❌ Ошибка загрузки данных игроков:", e.message);
+        res.status(500).json({ error: "DB_FETCH_FAILED" });
+    }
+});
 app.get('/get-archive', async (req, res) => {
     try {
         const { data } = await sbGet('archive', 'order=id.desc');
@@ -298,6 +313,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
