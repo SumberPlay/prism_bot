@@ -209,8 +209,29 @@ bot.hears('📊 СТАТУС', (ctx) => {
     ctx.reply(`📊 СТАТУС: ${systemStatus.label}\n${systemStatus.reason ? 'Причина: ' + systemStatus.reason : ''}`);
 });
 
-bot.hears('🧹 ОЧИСТКА', (ctx) => {
-    ctx.reply("🧹 Команда очистки вызвана. (Функция в разработке для новой БД)", mainMenu);
+bot.hears('🧹 ОЧИСТКА', async (ctx) => {
+    const chatId = ctx.chat.id;
+    const lastMsgId = ctx.message.message_id;
+    
+    ctx.reply("⚠️ Запуск протокола очистки... (удаление последних 100 сообщений)");
+
+    // Цикл удаления: пробуем удалить последние 100 ID сообщений
+    let deletedCount = 0;
+    for (let i = 0; i < 100; i++) {
+        try {
+            await ctx.telegram.deleteMessage(chatId, lastMsgId - i);
+            deletedCount++;
+        } catch (e) {
+            // Игнорируем ошибки (если сообщение уже удалено или слишком старое)
+            continue;
+        }
+    }
+
+    // Отправляем уведомление и удаляем его через 5 секунд
+    const report = await ctx.reply(`🧹 Очистка завершена. Удалено: ${deletedCount} ед. данных.`);
+    setTimeout(() => {
+        ctx.telegram.deleteMessage(chatId, report.message_id).catch(() => {});
+    }, 5000);
 });
 
 bot.catch((err) => {
@@ -219,6 +240,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
