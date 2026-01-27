@@ -4,7 +4,7 @@ const cors = require('cors');
 const axios = require('axios');
 
 // Инициализация переменных
-const BOT_TOKEN = process.env.BOT_TOKEN || '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
+const BOT_TOKEN = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = '5681992508'; 
 
 // Проверка наличия переменных Supabase
@@ -214,5 +214,6 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
