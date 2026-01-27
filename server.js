@@ -66,17 +66,19 @@ app.post('/add-task', async (req, res) => {
 });
 
 // 2. Удаление задачи из БД
-app.post('/remove-task', async (req, res) => {
+app.delete('/remove-task', async (req, res) => {
     try {
-        const { staff_id, task_text } = req.body;
+        const { staff_id, task_text } = req.query; // Берем из URL параметров
         const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
 
-        // Удаляем конкретную строку, где совпадает ID и текст
-        await axios.delete(`${fullUrl}/staff_tasks?staff_id=eq.${staff_id}&task_text=eq.${task_text}`, 
+        // Удаляем конкретную строку
+        await axios.delete(`${fullUrl}/staff_tasks?staff_id=eq.${staff_id}&task_text=eq.${encodeURIComponent(task_text)}`, 
         { headers: SB_HEADERS });
 
+        console.log(`[COUNCIL] Директива удалена для: ${staff_id}`);
         res.status(200).json({ success: true });
     } catch (e) {
+        console.error("Ошибка удаления задачи:", e.response?.data || e.message);
         res.status(500).json({ error: "DB Delete Error" });
     }
 });
@@ -407,6 +409,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
