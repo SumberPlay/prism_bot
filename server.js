@@ -67,6 +67,29 @@ app.get('/get-staff', async (req, res) => {
 
 app.get('/status', (req, res) => res.json(systemStatus));
 
+app.post('/send-report', async (req, res) => {
+    try {
+        const { user, text, timestamp } = req.body;
+        const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+
+        // 1. Сохраняем в таблицу reports
+        await axios.post(`${fullUrl}/reports`, {
+            staff_name: user,
+            report_text: text,
+            created_at: new Date().toISOString()
+        }, { headers: SB_HEADERS });
+
+        // 2. Дублируем в Telegram для мгновенного уведомления
+        const msg = `📜 **НОВЫЙ РАПОРТ (В БД)**\n👤 ${user}\n⏰ ${timestamp}\n📝 ${text}`;
+        await bot.telegram.sendMessage(ADMIN_CHAT_ID, msg, { parse_mode: 'Markdown' });
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error("Ошибка сохранения рапорта:", e.response ? e.response.data : e.message);
+        res.status(500).json({ success: false });
+    }
+});
+
 // Получение архива для сайта
 app.get('/get-archive', async (req, res) => {
     try {
@@ -240,6 +263,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
