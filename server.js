@@ -1,11 +1,18 @@
 const express = require('express');
 const { Telegraf, Markup } = require('telegraf');
 const cors = require('cors');
-const axios = require('axios'); // ВАЖНО: Добавь эту строку
+const axios = require('axios');
 
-const BOT_TOKEN = '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
+const BOT_TOKEN = process.env.BOT_TOKEN || '7809111631:AAGO30xOzwdfZpuL_5ee5GhClmy_94w3UEI';
 const ADMIN_CHAT_ID = '5681992508'; 
-const FILE_PATH = 'data/archive.json'; // ВАЖНО: Добавь эту строку
+const SB_URL = process.env.SUPABASE_URL; 
+const SB_KEY = process.env.SUPABASE_KEY;
+
+const SB_HEADERS = { 
+    "apikey": SB_KEY, 
+    "Authorization": `Bearer ${SB_KEY}`,
+    "Content-Type": "application/json"
+};
 
 const app = express();
 const bot = new Telegraf(BOT_TOKEN);
@@ -13,307 +20,133 @@ const bot = new Telegraf(BOT_TOKEN);
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-    res.status(200).send('SERVER_HEARTBEAT_OK');
-});
-
-const chatHistory = new Map();
-
-const trackMsg = (ctx, msg) => {
-    if (!chatHistory.has(ctx.chat.id)) chatHistory.set(ctx.chat.id, []);
-    chatHistory.get(ctx.chat.id).push(msg.message_id);
-};
-
-// Названия серверов для отображения в терминале
-const SERVERS = [
-    { ip: process.env.MC_SERVER_IP_1, name: "ALPHA_SITE" },
-    { ip: process.env.MC_SERVER_IP_2, name: "BETA_SITE" }
-];
-
-app.get('/mc-status', async (req, res) => {
-    try {
-        const requests = SERVERS.map(s => 
-            axios.get(`https://api.mcsrvstat.us/3/${s.ip}`).catch(() => ({ data: { online: false } }))
-        );
-
-        const responses = await Promise.all(requests);
-        
-        // Объект вида { "M4skine": "ALPHA_SITE", "Krimpi": "BETA_SITE" }
-        let playerLocations = {};
-
-        responses.forEach((response, index) => {
-            const data = response.data;
-            const serverName = SERVERS[index].name;
-
-            if (data.online && data.players?.list) {
-                data.players.list.forEach(p => {
-                    playerLocations[p.name] = serverName;
-                });
-            }
-        });
-
-        res.json({ 
-            onlinePlayers: playerLocations 
-        });
-    } catch (error) {
-        res.status(500).json({ error: "Sync error" });
-    }
-});
-
-// === БАЗЫ ДАННЫХ ===
-let staffDB = {
-    "M4SK": { pass: "5e03fcd2d70a976a6b026374da5da3f9", role: "scientific", mc_name: "M4skine_", level: 3, name: "МэнсиКейн", dept: "НАУЧНЫЙ ОТДЕЛ", spec: "АНОМАЛИИ", joined: "03.01.2026", bio: "ИССЛЕДОВАТЕЛЬ", note: "ДОПУСК К СЕКТОРУ B" },
-    "KRMP": { pass: "1bf502b835ee007957e558cbb1959ecb", role: "military", mc_name: "Krimpi", level: 2, name: "Кримпи", dept: "ВГР", spec: "ТАКТИКА", joined: "03.01.2026", bio: "ГЛАВА ВГР ES", note: "ПАТРУЛЬ ПЕРИМЕТРА" },
-    "SUMBR": { pass: "8aaa688aadaf78796f5f620a4897eeb3", role: "council", mc_name: "SumberTheCreator", level: 5, name: "Самбер", dept: "ВЫСШИЙ СОВЕТ", spec: "КУРАТОР", joined: "С основания", bio: "ОСНОВАТЕЛЬ P.R.I.S.M.", note: "ПОЛНЫЙ ДОСТУП" },
-    "MRYZE": { pass: "b0eee0a274f64e6f5792b85c93321159", role: "council", mc_name: "MrYuze", level: 5, name: "Юз", dept: "ВЫСШИЙ СОВЕТ", spec: "СТРАТЕГ", joined: "С основания", bio: "ГЛАВА АНАЛИТИКИ", note: "КУРАТОР ПРОЕКТОВ" },
-    "RAY": { pass: "c20b11e4ce0f2d30e2d4d4f4e4089192", role: "council", mc_name: "34ray_", level: 5, name: "Рей", dept: "ВЫСШИЙ СОВЕТ", spec: "КУРАТОР", joined: "Данные отсутствуют", bio: "ЭПШТЕЙН", note: "КУРАТОР ПРОЕКТОВ" },
-    "MRS": { pass: "ff88883a61ea14ec248d3739c52aee16", role: "scientific", mc_name: "MorisReal", level: 4, name: "Морис", dept: "НАУЧНЫЙ ОТДЕЛ", spec: "ГЛАВА ОНГ", joined: "25.01.2026", bio: "ГЛАВА ОНГ", note: "КУРАТОР ОНГ" }
-};
-
-let playerDB = {
-    "M4SK": { level: 0, name: "ТЕст1", mc_name: "Steve", dept: "Организация1", bio: "Создатель." },
-    "KRMP": { level: 2, name: "ТЕст2", mc_name: "Steve1", dept: "Организация2", bio: "Отдель снабжения.", note: "Подчинение Совету." },
-    "SUMBR": { level: 3, name: "ТЕст3", mc_name: "Steve2", dept: "Организация3", bio: "Не придумал." },
-    "MRYZE": { level: 5, name: "ТЕст4", mc_name: "Steve3", dept: "Организация4", bio: "Глава глав." }
-};
-
-let systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
 const userStates = new Map();
+let systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
 
-// === API ===
-app.post('/login', (req, res) => {
-    const { id, pass } = req.body;
-    const user = staffDB[id];
-    if (user && user.pass === pass) res.json({ success: true, level: user.level, name: user.name, role: user.role });
-    else res.status(401).json({ success: false });
-});
+// --- ВСПОМОГАТЕЛЬНЫЙ ФЕТЧ ---
+const sbGet = (table, params = "") => axios.get(`${SB_URL}/${table}?${params}`, { headers: SB_HEADERS });
 
-app.get('/get-admin-staff', (req, res) => res.json(staffDB));
-app.get('/get-staff', (req, res) => res.json(playerDB));
-
-app.post('/send-report', async (req, res) => { // Добавили async
-    const { user, text, timestamp } = req.body;
-    
-    // Упрощаем сообщение, убираем Markdown, чтобы символы * или _ не вызывали ошибок
-    const msg = `📩 НОВЫЙ РАПОРТ\n👤 От: ${user}\n🕒 Время: ${timestamp}\n📝 Текст: ${text}`;
-
+// --- API ДЛЯ ТЕРМИНАЛА (САЙТА) ---
+app.post('/login', async (req, res) => {
     try {
-        // Ждем, пока Telegram реально примет сообщение
-        await bot.telegram.sendMessage(ADMIN_CHAT_ID, msg);
-        res.json({ success: true });
-    } catch (error) {
-        console.error("Ошибка отправки в TG:", error);
-        // Если TG не принял — возвращаем ошибку, чтобы сайт не писал "Отправлено"
-        res.status(500).json({ success: false, error: "Telegram API Error" });
-    }
+        const { id, pass } = req.body;
+        const { data } = await sbGet('staff', `id=eq.${id}&password=eq.${pass}`);
+        if (data[0]) res.json({ success: true, ...data[0] });
+        else res.status(401).json({ success: false });
+    } catch (e) { res.status(500).json({ error: "DB Error" }); }
 });
 
-app.post('/auth-log', (req, res) => {
-    const { id, name, level } = req.body;
-    bot.telegram.sendMessage(ADMIN_CHAT_ID, `👤 **ВХОД**\nID: \`${id}\`\nИмя: **${name}**\nДопуск: **L${level}**`, { parse_mode: 'Markdown' });
-    res.json({ success: true });
+app.get('/get-admin-staff', async (req, res) => {
+    const { data } = await sbGet('staff', 'order=level.desc');
+    res.json(data);
+});
+
+app.get('/get-staff', async (req, res) => {
+    const { data } = await sbGet('players', 'order=display_name.asc');
+    res.json(data);
 });
 
 app.get('/status', (req, res) => res.json(systemStatus));
 
-// === КОМАНДЫ БОТА ===
+// --- КОМАНДЫ БОТА ---
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
     ['📝 СОЗДАТЬ ЗАПИСЬ', '📂 АРХИВ'],
-    ['👥 ДОСЬЕ', '👔 СОТРУДНИКИ'],
-    ['📊 ТЕКУЩИЙ СТАТУС', '🧹 ОЧИСТКА']
+    ['👥 ИГРОКИ', '👔 ПЕРСОНАЛ', '⚠️ АНОМАЛИИ'],
+    ['📊 СТАТУС', '🧹 ОЧИСТКА']
 ]).resize();
 
-bot.start(async (ctx) => {
-    const msg = await ctx.reply('🛡️ Терминал P.R.I.S.M. активен.', mainMenu);
-    trackMsg(ctx, msg);
+bot.start((ctx) => ctx.reply('🛡️ P.R.I.S.M. CORE: CONNECTED', mainMenu));
+
+// Реестр персонала
+bot.hears('👔 ПЕРСОНАЛ', async (ctx) => {
+    const { data } = await sbGet('staff', 'order=level.desc');
+    let text = "👔 **СПИСОК СОТРУДНИКОВ:**\n\n";
+    data.forEach(u => text += `🔸 \`${u.id}\` — ${u.name} (L${u.level})\nКлюч: ||${u.password}||\n\n`);
+    ctx.reply(text, { parse_mode: 'MarkdownV2' }); // Скрытый текст для паролей
 });
 
-bot.hears('📊 ТЕКУЩИЙ СТАТУС', async (ctx) => {
-    let message = `📊 **ТЕКУЩИЙ СТАТУС:**\n\n🔹 Режим: **${systemStatus.label}**\n`;
-    if (systemStatus.reason) message += `📝 Причина: _${systemStatus.reason}_`;
-    const msg = await ctx.reply(message, { parse_mode: 'Markdown' });
-    trackMsg(ctx, msg);
+// Реестр игроков
+bot.hears('👥 ИГРОКИ', async (ctx) => {
+    const { data } = await sbGet('players');
+    let text = "👥 **АКТИВНЫЕ СУБЪЕКТЫ:**\n\n";
+    data.forEach(p => text += `🔹 \`${p.id}\` — ${p.display_name} (L${p.level}) [${p.rank}]\n`);
+    ctx.reply(text, { parse_mode: 'Markdown' });
 });
 
-bot.hears('🧹 ОЧИСТКА', async (ctx) => {
-    const chatID = ctx.chat.id;
-    const ids = chatHistory.get(chatID) || [];
-    try { await ctx.deleteMessage(ctx.message.message_id); } catch(e) {}
-    for (const id of ids) {
-        try { await ctx.deleteMessage(id); } catch (e) {}
-    }
-    chatHistory.set(chatID, []);
-    const msg = await ctx.reply('🧹 Терминал очищен.', mainMenu);
-    trackMsg(ctx, msg);
+// Реестр аномалий
+bot.hears('⚠️ АНОМАЛИИ', async (ctx) => {
+    const { data } = await sbGet('anomalies', 'order=id.asc');
+    let text = "☣️ **РЕЕСТР АНОМАЛИЙ:**\n\n";
+    data.forEach(a => text += `📟 \`#${a.id}\` — **${a.code}** [${a.class}]\n`);
+    ctx.reply(text, { parse_mode: 'Markdown' });
 });
+
+// Архив (с кнопкой удаления)
 bot.hears('📂 АРХИВ', async (ctx) => {
-    const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
-    const headers = { 
-        Authorization: `token ${process.env.GITHUB_TOKEN}`, 
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'P-R-I-S-M-Bot'
-    };
-
-    try {
-        const res = await axios.get(url, { headers });
-        const content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
-
-        if (content.length === 0) return ctx.reply('📭 Архив пуст.');
-
-        await ctx.reply('📖 **ПОСЛЕДНИЕ ЗАПИСИ:**', { parse_mode: 'Markdown' });
-
-        // Берем последние 5 записей
-        for (const note of content.slice(-5).reverse()) {
-            const txt = `🔹 **${note.title}** (L${note.level})\n🗓 _${note.date}_\n\n${note.content}`;
-            
-            // Создаем инлайн-кнопку удаления с ID записи
-            const msg = await ctx.reply(txt, {
-                parse_mode: 'Markdown',
-                ...Markup.inlineKeyboard([
-                    Markup.button.callback('🗑 Удалить', `delete_note_${note.id}`)
-                ])
-            });
-            trackMsg(ctx, msg);
-        }
-    } catch (e) {
-        ctx.reply('❌ Ошибка доступа к GitHub.');
+    const { data } = await sbGet('archive', 'order=id.desc&limit=5');
+    if (data.length === 0) return ctx.reply("Архив пуст.");
+    for (const note of data) {
+        await ctx.reply(`📜 **${note.title}** (L${note.level})\n_${note.date}_\n\n${note.content}`, {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([Markup.button.callback('🗑 Удалить', `del_${note.id}`)])
+        });
     }
 });
-bot.hears('👥 ДОСЬЕ', async (ctx) => {
-    let list = "📂 **РЕЕСТР СУБЪЕКТОВ:**\n\n";
-    Object.keys(playerDB).forEach(id => { list += `🔹 \`${id}\` — ${playerDB[id].name} (L${playerDB[id].level})\n`; });
-    const msg = await ctx.reply(list, { parse_mode: 'Markdown' });
-    trackMsg(ctx, msg);
+
+// Обработка удаления
+bot.action(/^del_(.+)$/, async (ctx) => {
+    await axios.delete(`${SB_URL}/archive?id=eq.${ctx.match[1]}`, { headers: SB_HEADERS });
+    await ctx.answerCbQuery("Запись стерта");
+    await ctx.editMessageText("🗑 Запись удалена из центральной базы.");
 });
 
-bot.hears('👔 СОТРУДНИКИ', async (ctx) => {
-    let list = "🛡️ **РЕЕСТР ДОСТУПА:**\n\n";
-    Object.keys(staffDB).forEach(id => { 
-        list += `🔸 \`${id}\` — ${staffDB[id].name} (L${staffDB[id].level}, ключ: \`${staffDB[id].pass}\`)\n`; 
-    });
-    const msg = await ctx.reply(list, { parse_mode: 'Markdown' });
-    trackMsg(ctx, msg);
-});
-
-bot.hears('🔴 RED CODE', async (ctx) => {
-    userStates.set(ctx.from.id, 'WAITING_FOR_REASON');
-    const msg = await ctx.reply('🚨 Введите причину:', Markup.removeKeyboard());
-    trackMsg(ctx, msg);
-});
-
-bot.hears('🟢 STABLE', async (ctx) => {
-    systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
-    const msg = await ctx.reply('✅ Система стабилизирована.', mainMenu);
-    trackMsg(ctx, msg);
-});
-
-bot.hears('📝 СОЗДАТЬ ЗАПИСЬ', async (ctx) => {
-    if (ctx.chat.id.toString() !== ADMIN_CHAT_ID) return;
-    userStates.set(ctx.from.id, { step: 'WAIT_TITLE' });
-    await ctx.reply('📄 ВВЕДИТЕ ЗАГОЛОВОК ЗАПИСИ:', Markup.removeKeyboard());
+// Создание записи в архив (Пошагово)
+bot.hears('📝 СОЗДАТЬ ЗАПИСЬ', (ctx) => {
+    userStates.set(ctx.from.id, { step: 'TITLE' });
+    ctx.reply("Введите заголовок записи:", Markup.removeKeyboard());
 });
 
 bot.on('text', async (ctx, next) => {
     const state = userStates.get(ctx.from.id);
-    if (!state) return next();
+    if (!state || typeof state === 'string') return next(); // Пропускаем если это статус
 
-    if (state === 'WAITING_FOR_REASON') {
-        systemStatus = { state: "RED", label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ", color: "#ff4444", reason: ctx.message.text };
-        userStates.delete(ctx.from.id);
-        const msg = await ctx.reply(`⚠️ УСТАНОВЛЕН КРАСНЫЙ КОД`, mainMenu);
-        trackMsg(ctx, msg);
-        bot.telegram.sendMessage(ADMIN_CHAT_ID, `‼️ **ALARM**\nПричина: ${systemStatus.reason}`);
-        return;
-    }
-
-    if (state.step === 'WAIT_TITLE') {
-        userStates.set(ctx.from.id, { step: 'WAIT_LEVEL', title: ctx.message.text });
-        await ctx.reply('🔑 УСТАНОВИТЕ УРОВЕНЬ ДОСТУПА (1-5):');
-    } else if (state.step === 'WAIT_LEVEL') {
-        const lvl = parseInt(ctx.message.text);
-        if (isNaN(lvl) || lvl < 1 || lvl > 5) return ctx.reply("Введите число от 1 до 5!");
-        userStates.set(ctx.from.id, { ...state, step: 'WAIT_CONTENT', level: lvl });
-        await ctx.reply('✍️ ВВЕДИТЕ ТЕКСТ ЗАПИСИ:');
-    } else if (state.step === 'WAIT_CONTENT') {
-        const finalNote = {
-            id: `L${Date.now()}`,
+    if (state.step === 'TITLE') {
+        userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
+        ctx.reply("Уровень доступа (1-5):");
+    } else if (state.step === 'LVL') {
+        userStates.set(ctx.from.id, { ...state, step: 'TEXT', lvl: ctx.message.text });
+        ctx.reply("Введите текст протокола:");
+    } else if (state.step === 'TEXT') {
+        const note = {
             title: state.title,
-            level: state.level,
+            level: parseInt(state.lvl),
             content: ctx.message.text,
             date: new Date().toLocaleDateString('ru-RU')
         };
-        await ctx.reply('⏳ Сохранение в базу P.R.I.S.M...');
-        const success = await addNoteToArchive(finalNote);
+        await axios.post(`${SB_URL}/archive`, note, { headers: SB_HEADERS });
         userStates.delete(ctx.from.id);
-        await ctx.reply(success ? '✅ ЗАПИСЬ УСПЕШНО ДОБАВЛЕНА' : '❌ ОШИБКА ГИТХАБА', mainMenu);
+        ctx.reply("✅ Запись внесена в реестр.", mainMenu);
     }
 });
 
-// === ФУНКЦИЯ GITHUB ===
-async function addNoteToArchive(newNote) {
-    const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
-    const headers = { 
-        Authorization: `token ${process.env.GITHUB_TOKEN}`, 
-        Accept: 'application/vnd.github.v3+json' 
-    };
-    try {
-        const res = await axios.get(url, { headers });
-        const sha = res.data.sha;
-        let content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
-        content.push(newNote);
-        await axios.put(url, {
-            message: `Entry added: ${newNote.title}`,
-            content: Buffer.from(JSON.stringify(content, null, 4)).toString('base64'),
-            sha: sha
-        }, { headers });
-        return true;
-    } catch (e) {
-        console.error("GITHUB_ERROR:", e.response?.data || e.message);
-        return false;
-    }
-}
-bot.action(/^delete_note_(.+)$/, async (ctx) => {
-    const noteId = ctx.match[1]; // Получаем ID из кнопки
-    
-    // 1. Сначала уведомляем, что процесс пошел
-    await ctx.answerCbQuery('Удаление...');
-
-    const url = `https://api.github.com/repos/${process.env.GITHUB_REPO}/contents/${FILE_PATH}?t=${Date.now()}`;
-    const headers = { 
-        Authorization: `token ${process.env.GITHUB_TOKEN}`, 
-        Accept: 'application/vnd.github.v3+json' 
-    };
-
-    try {
-        // Получаем текущий файл
-        const res = await axios.get(url, { headers });
-        const sha = res.data.sha;
-        let content = JSON.parse(Buffer.from(res.data.content, 'base64').toString() || "[]");
-
-        // Фильтруем: оставляем всё, кроме записи с нужным ID
-        const filteredContent = content.filter(n => n.id !== noteId);
-
-        // Отправляем обновленный файл обратно
-        await axios.put(url, {
-            message: `Deleted record: ${noteId}`,
-            content: Buffer.from(JSON.stringify(filteredContent, null, 4)).toString('base64'),
-            sha: sha
-        }, { headers });
-
-        // 2. Уведомляем об успехе и правим сообщение
-        await ctx.editMessageText('🗑 Запись удалена из базы P.R.I.S.M.');
-    } catch (e) {
-        console.error(e);
-        await ctx.reply('❌ Не удалось удалить запись.');
-    }
+// Статус системы
+bot.hears('🔴 RED CODE', (ctx) => {
+    userStates.set(ctx.from.id, 'WAIT_RED');
+    ctx.reply("ПРИЧИНА ТРЕВОГИ:", Markup.removeKeyboard());
 });
+
+bot.on('text', async (ctx, next) => {
+    if (userStates.get(ctx.from.id) !== 'WAIT_RED') return next();
+    systemStatus = { state: "RED", label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ", color: "#ff4444", reason: ctx.message.text };
+    userStates.delete(ctx.from.id);
+    ctx.reply("⚠️ ТРЕВОГА ОБЪЯВЛЕНА", mainMenu);
+});
+
+bot.hears('🟢 STABLE', (ctx) => {
+    systemStatus = { state: "NORMAL", label: "ШТАТНЫЙ РЕЖИМ", color: "#00ffcc", reason: "" };
+    ctx.reply("✅ Система стабилизирована.", mainMenu);
+});
+
 bot.launch();
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`API port: ${PORT}`));
-
-
-
-
-
-
+app.listen(process.env.PORT || 10000, () => console.log("CORE ONLINE"));
