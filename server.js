@@ -203,25 +203,39 @@ bot.on('text', async (ctx, next) => {
 
     // 2. Пошаговые формы (объекты)
     if (typeof state === 'object') {
-        // Создание записи в архив
-        if (state.step === 'TITLE') {
-            userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
-            return ctx.reply("Уровень доступа (1-5):");
-        } else if (state.step === 'LVL') {
-            userStates.set(ctx.from.id, { ...state, step: 'TEXT', lvl: ctx.message.text });
-            return ctx.reply("Введите текст протокола:");
-        } else if (state.step === 'TEXT') {
-            try {
-                await axios.post(`${getFullSbUrl()}/archive`, {
-                    title: state.title,
-                    level: parseInt(state.lvl) || 1,
-                    content: ctx.message.text,
-                    date: new Date().toLocaleDateString('ru-RU')
-                }, { headers: SB_HEADERS });
-                ctx.reply("✅ Запись внесена в реестр.", mainMenu);
-            } catch (e) { ctx.reply("❌ Ошибка записи."); }
-            userStates.delete(ctx.from.id);
+
+    // Логика создания записи в архив
+    if (state.step === 'TITLE') {
+        userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
+        return ctx.reply("Укажите уровень секретности (1-5):");
+    } 
+    
+    else if (state.step === 'LVL') {
+        const level = parseInt(ctx.message.text);
+        if (isNaN(level) || level < 1 || level > 5) return ctx.reply("Ошибка. Введите число от 1 до 5:");
+        
+        userStates.set(ctx.from.id, { ...state, step: 'TEXT', lvl: level });
+        return ctx.reply("Введите основной текст протокола:");
+    } 
+    
+    else if (state.step === 'TEXT') {
+        try {
+            const newEntry = {
+                title: state.title,
+                level: state.lvl,
+                content: ctx.message.text,
+                date: new Date().toLocaleDateString('ru-RU')
+            };
+
+            await axios.post(`${getFullSbUrl()}/archive`, newEntry, { headers: SB_HEADERS });
+            
+            ctx.reply("✅ ПРОТОКОЛ УСПЕШНО ВНЕСЕН В РЕЕСТР", mainMenu);
+        } catch (e) {
+            console.error("Save Error:", e.response?.data || e.message);
+            ctx.reply("❌ ОШИБКА ЗАПИСИ: Проверьте структуру таблицы 'archive'", mainMenu);
         }
+        userStates.delete(ctx.from.id); // Сбрасываем состояние
+    }
         // Создание задачи сотруднику
         else if (state.step === 'TASK_USER') {
             userStates.set(ctx.from.id, { ...state, step: 'TASK_TEXT', targetId: ctx.message.text.toUpperCase() });
@@ -293,7 +307,65 @@ bot.hears('🧹 ОЧИСТКА', async (ctx) => {
         try { await ctx.telegram.deleteMessage(ctx.chat.id, lastId - i); } catch (e) {}
     }
 });
+// --- ОБРАБОТКА КНОПКИ АРХИВ ---
+bot.hears('📂 АРХИВ', async (ctx) => {
+    try {
+        const { data } = await sbGet('archive', 'order=id.desc&limit=10');
+        
+        if (!data || data.length === 0) {
+            return ctx.reply("🗄 Реестр пуст. База данных не содержит записей.");
+        }
 
+        let report = "<b>📂 ПОСЛЕДНИЕ ПРОТОКОЛЫ АРХИВА:</b>\n\n";
+        data.forEach(item => {
+            report += `<b>🆔 ID: ${item.id}</b> | 🔐 L${item.level || 1}\n`;
+            report += `📍 <b>${item.title}</b>\n`;
+            report += `📝 <code>${item.content ? item.content.substring(0, 150) : 'Нет текста'}...</code>\n`;
+            report += `────────────────────\n`;
+        });
+
+        await ctx.reply(report, { parse_mode: 'HTML' });
+    } catch (e) {
+        console.error("Архив Error:", e.message);
+        ctx.reply("❌ СБОЙ ПОДКЛЮЧЕНИЯ К ЦЕНТРАЛЬНОМУ АРХИВУ");
+    }
+});
+
+// --- ОБРАБОТКА КНОПКИ АНОМАЛИИ ---
+bot.hears('⚠️ АНОМАЛИИ', async (ctx) => {
+    try {
+        const { data } = await sbGet('anomalies', 'order=id.asc');
+        if (!data || data.length === 0) return ctx.reply("🛡️ Аномалий не зафиксировано.");
+
+        let message = "<b>⚠️ РЕЕСТР АНОМАЛЬНЫХ ОБЪЕКТОВ:</b>\n\n";
+        data.forEach(obj => {
+            message += `<b>[ ${obj.index_number || obj.id} ]</b> — ${obj.name}\n`;
+            message += `Класс: <code>${obj.class || 'Не указан'}</code>\n`;
+            message += `Статус: ${obj.status || 'Наблюдение'}\n\n`;
+        });
+
+        await ctx.reply(message, { parse_mode: 'HTML' });
+    } catch (e) {
+        ctx.reply("❌ Ошибка базы аномалий.");
+    }
+});
+
+// --- ОБРАБОТКА КНОПКИ ИГРОКИ (Личные дела) ---
+bot.hears('👥 ИГРОКИ', async (ctx) => {
+    try {
+        const { data } = await sbGet('players', 'order=level.desc');
+        if (!data || data.length === 0) return ctx.reply("👥 Список игроков пуст.");
+
+        let text = "<b>👥 РЕЕСТР ГРАЖДАН (ИГРОКИ):</b>\n\n";
+        data.forEach(p => {
+            text += `🔹 ${p.name} (L${p.level})\n`;
+            text += `Ник: <code>${p.mc_name || '---'}</code>\n\n`;
+        });
+        await ctx.reply(text, { parse_mode: 'HTML' });
+    } catch (e) {
+        ctx.reply("❌ Ошибка загрузки списка игроков.");
+    }
+});
 bot.action(/^del_(.+)$/, async (ctx) => {
     try {
         await axios.delete(`${getFullSbUrl()}/archive?id=eq.${ctx.match[1]}`, { headers: SB_HEADERS });
@@ -304,6 +376,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
