@@ -122,15 +122,6 @@ app.get('/get-anomalies', async (req, res) => {
 });
 
 // Эндпоинт для досье игроков (модуль ЛИЧНЫЕ ДЕЛА)
-app.get('/get-staff', async (req, res) => {
-    try {
-        const { data } = await sbGet('staff', 'order=level.desc');
-        res.json(data);
-    } catch (e) { 
-        console.error("Ошибка персонала:", e.message);
-        res.status(500).json([]); 
-    }
-});
 app.post('/complete-task', async (req, res) => {
     try {
         const { staff_id, task_text } = req.body;
@@ -313,6 +304,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
