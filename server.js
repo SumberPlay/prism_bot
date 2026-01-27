@@ -62,6 +62,28 @@ app.get('/get-staff', async (req, res) => {
 
 app.get('/status', (req, res) => res.json(systemStatus));
 
+// Получение архива для сайта
+app.get('/get-archive', async (req, res) => {
+    try {
+        const { data } = await sbGet('archive', 'order=id.desc');
+        res.json(data);
+    } catch (e) { 
+        console.error("Archive API Error:", e);
+        res.status(500).json([]); 
+    }
+});
+
+// Получение аномалий для сайта
+app.get('/get-anomalies', async (req, res) => {
+    try {
+        const { data } = await sbGet('anomalies', 'order=id.asc');
+        res.json(data);
+    } catch (e) { 
+        console.error("Anomalies API Error:", e);
+        res.status(500).json([]); 
+    }
+});
+
 // --- КОМАНДЫ БОТА ---
 const mainMenu = Markup.keyboard([
     ['🔴 RED CODE', '🟢 STABLE'],
@@ -192,4 +214,5 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
