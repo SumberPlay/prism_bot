@@ -325,52 +325,62 @@ bot.hears('📝 СОЗДАТЬ ЗАПИСЬ', (ctx) => {
 
 bot.on('text', async (ctx, next) => {
     const state = userStates.get(ctx.from.id);
-    if (!state || typeof state === 'string') return next();
-    // ... внутри bot.on('text') ...
+    if (!state) return next();
 
-    if (state.step === 'TASK_USER') {
-        userStates.set(ctx.from.id, { ...state, step: 'TASK_TEXT', targetId: ctx.message.text.toUpperCase() });
-        return ctx.reply(`Введите текст директивы для ${ctx.message.text}:`);
-    }
-
-    if (state.step === 'TASK_TEXT') {
-        try {
-            const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
-            await axios.post(`${fullUrl}/staff_tasks`, {
-                staff_id: state.targetId,
-                task_text: ctx.message.text,
-                is_done: false
-            }, { headers: SB_HEADERS });
-
-            ctx.reply(`✅ Директива для ${state.targetId} внесена в реестр.`, mainMenu);
-    } catch (e) {
-        ctx.reply("❌ Ошибка. Убедитесь, что ID сотрудника верен.");
-    }
-    userStates.delete(ctx.from.id);
-    return;
-}
-    if (state.step === 'TITLE') {
-        userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
-        ctx.reply("Уровень доступа (1-5):");
-    } else if (state.step === 'LVL') {
-        userStates.set(ctx.from.id, { ...state, step: 'TEXT', lvl: ctx.message.text });
-        ctx.reply("Введите текст протокола:");
-    } else if (state.step === 'TEXT') {
-        try {
-            const note = {
-                title: state.title,
-                level: parseInt(state.lvl) || 1,
-                content: ctx.message.text,
-                date: new Date().toLocaleDateString('ru-RU')
-            };
-            const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
-            await axios.post(`${fullUrl}/archive`, note, { headers: SB_HEADERS });
-            ctx.reply("✅ Запись внесена в реестр.", mainMenu);
-        } catch (e) { ctx.reply("❌ Ошибка сохранения.", mainMenu); }
+    // 1. Логика RED CODE (строка)
+    if (state === 'WAIT_RED') {
+        systemStatus = { state: "RED", label: "🚨 КРИТИЧЕСКОЕ СОСТОЯНИЕ", color: "#ff4444", reason: ctx.message.text };
         userStates.delete(ctx.from.id);
+        return ctx.reply("⚠️ ТРЕВОГА ОБЪЯВЛЕНА", mainMenu);
+    }
+
+    // 2. Логика создания объектов (если state - объект)
+    if (typeof state === 'object') {
+        // Шаг: Заголовок архива
+        if (state.step === 'TITLE') {
+            userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
+            return ctx.reply("Уровень доступа (1-5):");
+        } 
+        // Шаг: Уровень архива
+        else if (state.step === 'LVL') {
+            userStates.set(ctx.from.id, { ...state, step: 'TEXT', lvl: ctx.message.text });
+            return ctx.reply("Введите текст протокола:");
+        } 
+        // Шаг: Финал архива
+        else if (state.step === 'TEXT') {
+            try {
+                const note = {
+                    title: state.title,
+                    level: parseInt(state.lvl) || 1,
+                    content: ctx.message.text,
+                    date: new Date().toLocaleDateString('ru-RU')
+                };
+                const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+                await axios.post(`${fullUrl}/archive`, note, { headers: SB_HEADERS });
+                ctx.reply("✅ Запись внесена в реестр.", mainMenu);
+            } catch (e) { ctx.reply("❌ Ошибка сохранения."); }
+            userStates.delete(ctx.from.id);
+        }
+        // Шаг: Выбор юзера для задачи
+        else if (state.step === 'TASK_USER') {
+            userStates.set(ctx.from.id, { ...state, step: 'TASK_TEXT', targetId: ctx.message.text.toUpperCase() });
+            return ctx.reply(`Введите текст директивы для ${ctx.message.text}:`);
+        }
+        // Шаг: Текст задачи
+        else if (state.step === 'TASK_TEXT') {
+            try {
+                const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+                await axios.post(`${fullUrl}/staff_tasks`, {
+                    staff_id: state.targetId,
+                    task_text: ctx.message.text,
+                    is_done: false
+                }, { headers: SB_HEADERS });
+                ctx.reply(`✅ Директива для ${state.targetId} внесена в реестр.`, mainMenu);
+            } catch (e) { ctx.reply("❌ Ошибка. Проверьте ID."); }
+            userStates.delete(ctx.from.id);
+        }
     }
 });
-
 // Статус системы
 bot.hears('🔴 RED CODE', (ctx) => {
     userStates.set(ctx.from.id, 'WAIT_RED');
@@ -427,6 +437,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
