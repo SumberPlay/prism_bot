@@ -43,68 +43,84 @@ app.get('/', (req, res) => {
 
 // --- ДОБАВИТЬ В index.js ---
 
-// 1. Маршрут для добавления задачи
-app.post('/add-task', (req, res) => {
-    const { staff_id, task_text } = req.body;
-    
-    // Ищем сотрудника в твоем массиве/БД
-    const person = staffDB.find(u => u.id === staff_id);
-    if (person) {
-        if (!person.tasks) person.tasks = [];
-        person.tasks.push({ text: task_text, done: false });
-        console.log(`[COUNCIL] Добавлена задача для ${staff_id}: ${task_text}`);
+// --- ИСПРАВЛЕННЫЕ МАРШРУТЫ ДЛЯ РАБОТЫ С SUPABASE ---
+
+// 1. Добавление задачи в БД
+app.post('/add-task', async (req, res) => {
+    try {
+        const { staff_id, task_text } = req.body;
+        const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+
+        await axios.post(`${fullUrl}/staff_tasks`, {
+            staff_id: staff_id,
+            task_text: task_text,
+            is_done: false
+        }, { headers: SB_HEADERS });
+
+        console.log(`[COUNCIL] Директива записана в Supabase для: ${staff_id}`);
         res.status(200).json({ success: true });
-    } else {
-        res.status(404).json({ error: "Сотрудник не найден" });
+    } catch (e) {
+        console.error("Ошибка добавления задачи:", e.response?.data || e.message);
+        res.status(500).json({ error: "DB Write Error" });
     }
 });
 
-// 2. Маршрут для удаления задачи
-app.post('/remove-task', (req, res) => {
-    const { staff_id, task_text } = req.body;
-    const person = staffDB.find(u => u.id === staff_id);
-    
-    if (person && person.tasks) {
-        person.tasks = person.tasks.filter(t => t.text !== task_text);
+// 2. Удаление задачи из БД
+app.post('/remove-task', async (req, res) => {
+    try {
+        const { staff_id, task_text } = req.body;
+        const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+
+        // Удаляем конкретную строку, где совпадает ID и текст
+        await axios.delete(`${fullUrl}/staff_tasks?staff_id=eq.${staff_id}&task_text=eq.${task_text}`, 
+        { headers: SB_HEADERS });
+
         res.status(200).json({ success: true });
-    } else {
-        res.status(404).json({ error: "Ошибка удаления" });
+    } catch (e) {
+        res.status(500).json({ error: "DB Delete Error" });
     }
 });
 
-// 3. Регистрация нового сотрудника
-app.post('/register-staff', (req, res) => {
-    const newStaff = {
-        ...req.body,
-        tasks: [],
-        dept: "PENDING_ASSIGNMENT",
-        role: "STAFF"
-    };
-    
-    // Проверка на дубликаты ID
-    if (staffDB.find(u => u.id === newStaff.id)) {
-        return res.status(400).json({ error: "ID уже занят" });
-    }
+// 3. Регистрация нового сотрудника в таблицу staff
+app.post('/register-staff', async (req, res) => {
+    try {
+        const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+        const newStaff = {
+            id: req.body.id,
+            name: req.body.name,
+            mc_name: req.body.mc_name,
+            level: parseInt(req.body.level),
+            password: Math.random().toString(36).slice(-6), // Генерируем случайный пароль
+            dept: "SECURITY",
+            note: "НОВЫЙ ОБЪЕКТ"
+        };
 
-    staffDB.push(newStaff);
-    console.log(`[COUNCIL] Новый объект зарегистрирован: ${newStaff.id}`);
-    res.status(200).json({ success: true });
+        await axios.post(`${fullUrl}/staff`, newStaff, { headers: SB_HEADERS });
+        
+        console.log(`[COUNCIL] Сотрудник ${newStaff.id} внесен в Supabase`);
+        res.status(200).json({ success: true });
+    } catch (e) {
+        console.error("Ошибка регистрации:", e.response?.data || e.message);
+        res.status(500).json({ error: "Registration Error" });
+    }
 });
 
 // 4. Полное удаление сотрудника
-app.post('/delete-staff', (req, res) => {
-    const { staff_id } = req.body;
-    const initialLength = staffDB.length;
-    staffDB = staffDB.filter(u => u.id !== staff_id);
-    
-    if (staffDB.length < initialLength) {
-        console.log(`[COUNCIL] Объект ${staff_id} удален из реестра`);
+app.post('/delete-staff', async (req, res) => {
+    try {
+        const { staff_id } = req.body;
+        const fullUrl = SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
+
+        // Сначала удаляем все задачи этого сотрудника (каскадом)
+        await axios.delete(`${fullUrl}/staff_tasks?staff_id=eq.${staff_id}`, { headers: SB_HEADERS });
+        // Затем удаляем самого сотрудника
+        await axios.delete(`${fullUrl}/staff?id=eq.${staff_id}`, { headers: SB_HEADERS });
+
         res.status(200).json({ success: true });
-    } else {
-        res.status(404).json({ error: "Объект не найден" });
+    } catch (e) {
+        res.status(500).json({ error: "Termination Error" });
     }
 });
-
 // --- API ДЛЯ САЙТА ---
 app.post('/login', async (req, res) => {
     try {
@@ -391,6 +407,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
