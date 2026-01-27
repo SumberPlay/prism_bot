@@ -41,18 +41,68 @@ app.get('/', (req, res) => {
     res.send('<h1>P.R.I.S.M. API CORE</h1><p>Status: ONLINE</p>');
 });
 
-// ПРИМЕР: Добавление задачи
+// --- ДОБАВИТЬ В index.js ---
+
+// 1. Маршрут для добавления задачи
 app.post('/add-task', (req, res) => {
     const { staff_id, task_text } = req.body;
-    // Логика: найти в базе юзера по id и пушнуть в массив tasks новый объект {text: task_text, done: false}
-    res.sendStatus(200);
+    
+    // Ищем сотрудника в твоем массиве/БД
+    const person = staffDB.find(u => u.id === staff_id);
+    if (person) {
+        if (!person.tasks) person.tasks = [];
+        person.tasks.push({ text: task_text, done: false });
+        console.log(`[COUNCIL] Добавлена задача для ${staff_id}: ${task_text}`);
+        res.status(200).json({ success: true });
+    } else {
+        res.status(404).json({ error: "Сотрудник не найден" });
+    }
 });
 
-// ПРИМЕР: Регистрация сотрудника
+// 2. Маршрут для удаления задачи
+app.post('/remove-task', (req, res) => {
+    const { staff_id, task_text } = req.body;
+    const person = staffDB.find(u => u.id === staff_id);
+    
+    if (person && person.tasks) {
+        person.tasks = person.tasks.filter(t => t.text !== task_text);
+        res.status(200).json({ success: true });
+    } else {
+        res.status(404).json({ error: "Ошибка удаления" });
+    }
+});
+
+// 3. Регистрация нового сотрудника
 app.post('/register-staff', (req, res) => {
-    const newStaff = req.body; // {id, name, mc_name, level, tasks: []}
-    // Логика: сохранить в БД
-    res.sendStatus(200);
+    const newStaff = {
+        ...req.body,
+        tasks: [],
+        dept: "PENDING_ASSIGNMENT",
+        role: "STAFF"
+    };
+    
+    // Проверка на дубликаты ID
+    if (staffDB.find(u => u.id === newStaff.id)) {
+        return res.status(400).json({ error: "ID уже занят" });
+    }
+
+    staffDB.push(newStaff);
+    console.log(`[COUNCIL] Новый объект зарегистрирован: ${newStaff.id}`);
+    res.status(200).json({ success: true });
+});
+
+// 4. Полное удаление сотрудника
+app.post('/delete-staff', (req, res) => {
+    const { staff_id } = req.body;
+    const initialLength = staffDB.length;
+    staffDB = staffDB.filter(u => u.id !== staff_id);
+    
+    if (staffDB.length < initialLength) {
+        console.log(`[COUNCIL] Объект ${staff_id} удален из реестра`);
+        res.status(200).json({ success: true });
+    } else {
+        res.status(404).json({ error: "Объект не найден" });
+    }
 });
 
 // --- API ДЛЯ САЙТА ---
@@ -341,6 +391,7 @@ bot.catch((err) => {
 
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
