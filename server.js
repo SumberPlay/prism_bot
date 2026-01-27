@@ -228,10 +228,25 @@ bot.hears('🟢 STABLE', (ctx) => {
 bot.hears('👔 ПЕРСОНАЛ', async (ctx) => {
     try {
         const { data } = await sbGet('staff', 'order=level.desc');
-        let text = "👔 *СПИСОК СОТРУДНИКОВ:*\n\n";
-        data.forEach(u => text += `🔸 \`${u.id}\` — ${u.name} (L${u.level})\nКлюч: ||${u.password}||\n\n`);
-        ctx.reply(text, { parse_mode: 'Markdown' });
-    } catch (e) { ctx.reply("❌ Ошибка БД."); }
+        
+        // Формируем текст с использованием HTML тегов
+        let text = "<b>👔 СПИСОК СОТРУДНИКОВ:</b>\n\n";
+        
+        data.forEach(u => {
+            // Экранируем возможные < и > в именах, чтобы HTML не сломался
+            const safeName = u.name.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const safeId = u.id.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            
+            text += `🔸 <code>${safeId}</code> — ${safeName} (L${u.level})\n`;
+            text += `Ключ: <tg-spoiler>${u.password}</tg-spoiler>\n\n`;
+        });
+
+        // Используем parse_mode: 'HTML'
+        await ctx.reply(text, { parse_mode: 'HTML' });
+    } catch (e) {
+        console.error("Ошибка вывода персонала:", e);
+        ctx.reply("❌ Ошибка доступа к базе данных.");
+    }
 });
 
 bot.hears('📊 СТАТУС', (ctx) => {
@@ -266,4 +281,5 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
