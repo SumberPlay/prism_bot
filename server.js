@@ -48,7 +48,7 @@ app.post('/delete-report', async (req, res) => {
     try {
         // Удаляем запись из таблицы 'archive' по колонке 'id'
         const { error } = await supabase
-            .from('archive')
+            .from('reports')
             .delete()
             .eq('id', report_id);
 
@@ -399,6 +399,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
