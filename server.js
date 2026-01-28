@@ -83,7 +83,24 @@ app.get('/get-admin-staff', async (req, res) => {
         res.json(fullData);
     } catch (e) { res.status(500).json([]); }
 });
+// Эндпоинт для получения всех рапортов из таблицы reports
+app.get('/get-reports', async (req, res) => {
+    try {
+        // Запрашиваем данные из Supabase, сортируя по ID (новые в конце)
+        const { data, error } = await supabase
+            .from('reports')
+            .select('*')
+            .order('id', { ascending: true });
 
+        if (error) throw error;
+
+        // Отправляем массив рапортов фронтенду
+        res.json(data);
+    } catch (err) {
+        console.error("Ошибка при получении рапортов:", err);
+        res.status(500).json({ error: "DATABASE_CONNECTION_ERROR" });
+    }
+});
 app.post('/register-staff', async (req, res) => {
     try {
         const { id, name, mc_name, level, dept } = req.body;
@@ -399,6 +416,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
