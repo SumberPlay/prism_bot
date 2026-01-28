@@ -38,29 +38,7 @@ const getFullSbUrl = () => SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/res
 
 app.get('/', (req, res) => res.send('<h1>P.R.I.S.M. API CORE</h1><p>Status: ONLINE</p>'));
 // Эндпоинт для удаления рапорта из базы данных
-app.post('/delete-report', async (req, res) => {
-    const { report_id } = req.body;
 
-    if (!report_id) {
-        return res.status(400).json({ error: "REPORT_ID_MISSING" });
-    }
-
-    try {
-        // Удаляем запись из таблицы 'archive' по колонке 'id'
-        const { error } = await supabase
-            .from('reports')
-            .delete()
-            .eq('id', report_id);
-
-        if (error) throw error;
-
-        console.log(`[SYSTEM] Report #${report_id} was deleted by Council Override.`);
-        res.json({ success: true });
-    } catch (err) {
-        console.error("Database Error:", err);
-        res.status(500).json({ error: "DATABASE_DELETE_FAILED" });
-    }
-});
 app.post('/login', async (req, res) => {
     try {
         const { id, pass } = req.body;
@@ -84,21 +62,34 @@ app.get('/get-admin-staff', async (req, res) => {
     } catch (e) { res.status(500).json([]); }
 });
 // Эндпоинт для получения всех рапортов из таблицы reports
+// Исправленный эндпоинт получения рапортов
 app.get('/get-reports', async (req, res) => {
     try {
-        // Запрашиваем данные из Supabase, сортируя по ID (новые в конце)
-        const { data, error } = await supabase
-            .from('reports')
-            .select('*')
-            .order('id', { ascending: true });
-
-        if (error) throw error;
-
-        // Отправляем массив рапортов фронтенду
+        // Используем твою функцию sbGet, которую ты уже написал
+        const { data } = await sbGet('reports', 'order=id.desc');
         res.json(data);
     } catch (err) {
-        console.error("Ошибка при получении рапортов:", err);
+        console.error("Ошибка при получении рапортов:", err.message);
         res.status(500).json({ error: "DATABASE_CONNECTION_ERROR" });
+    }
+});
+
+// Исправленный эндпоинт удаления рапорта
+app.post('/delete-report', async (req, res) => {
+    const { report_id } = req.body;
+    if (!report_id) return res.status(400).json({ error: "REPORT_ID_MISSING" });
+
+    try {
+        // Удаляем через axios, используя URL и заголовки Supabase
+        await axios.delete(`${getFullSbUrl()}/reports?id=eq.${report_id}`, { 
+            headers: SB_HEADERS 
+        });
+
+        console.log(`[SYSTEM] Report #${report_id} deleted.`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Database Error:", err.response?.data || err.message);
+        res.status(500).json({ error: "DATABASE_DELETE_FAILED" });
     }
 });
 app.post('/register-staff', async (req, res) => {
@@ -416,6 +407,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
