@@ -37,7 +37,30 @@ const getFullSbUrl = () => SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/res
 // --- API МАРШРУТЫ (ДЛЯ САЙТА) ---
 
 app.get('/', (req, res) => res.send('<h1>P.R.I.S.M. API CORE</h1><p>Status: ONLINE</p>'));
+// Эндпоинт для удаления рапорта из базы данных
+app.post('/delete-report', async (req, res) => {
+    const { report_id } = req.body;
 
+    if (!report_id) {
+        return res.status(400).json({ error: "REPORT_ID_MISSING" });
+    }
+
+    try {
+        // Удаляем запись из таблицы 'archive' по колонке 'id'
+        const { error } = await supabase
+            .from('archive')
+            .delete()
+            .eq('id', report_id);
+
+        if (error) throw error;
+
+        console.log(`[SYSTEM] Report #${report_id} was deleted by Council Override.`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Database Error:", err);
+        res.status(500).json({ error: "DATABASE_DELETE_FAILED" });
+    }
+});
 app.post('/login', async (req, res) => {
     try {
         const { id, pass } = req.body;
@@ -376,6 +399,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
