@@ -143,24 +143,38 @@ app.post('/delete-staff', async (req, res) => {
 app.get('/status', (req, res) => res.json(systemStatus));
 // Эндпоинт для списка аномалий
 app.get('/get-anomalies', async (req, res) => {
-    const userLvl = parseInt(req.headers['x-access-level']) || 0;
-    const { data } = await sbGet('anomalies', 'order=id.asc'); // Твоя функция запроса к Supabase
+    try {
+        const userLvl = parseInt(req.headers['x-access-level']) || 0;
+        const { data } = await sbGet('anomalies', 'order=id.asc');
 
-    const safeData = data.map(obj => {
-        if (userLvl < obj.lvl) {
-            return {
+        const safeData = data.map(obj => {
+            // Приводим поля БД к формату, который ждет фронтенд
+            const baseData = {
                 id: obj.id,
-                lvl: obj.lvl,
-                code: "CLASSIFIED",
-                class: "critical",
-                proc: "[ДАННЫЕ УДАЛЕНЫ]",
-                desc: "ДОСТУП ЗАПРЕЩЕН",
-                is_restricted: true
+                lvl: obj.lvl || obj.level || 1,
+                code: obj.code || obj.index_number || "OBJ-???",
+                class: obj.class || "safe",
+                proc: obj.proc || obj.containment || "Нет особых условий.",
+                desc: obj.desc || obj.description || "Описание отсутствует.",
+                img: obj.img || ""
             };
-        }
-        return { ...obj, is_restricted: false };
-    });
-    res.json(safeData);
+
+            if (userLvl < baseData.lvl) {
+                return {
+                    ...baseData,
+                    code: "CLASSIFIED",
+                    class: "critical",
+                    proc: "[ДАННЫЕ УДАЛЕНЫ]",
+                    desc: "ДОСТУП ЗАПРЕЩЕН: Попытка взлома зафиксирована.",
+                    is_restricted: true
+                };
+            }
+            return { ...baseData, is_restricted: false };
+        });
+        res.json(safeData);
+    } catch (e) {
+        res.status(500).json({ error: "DB_ERROR" });
+    }
 });
 
 // Эндпоинт для досье игроков (модуль ЛИЧНЫЕ ДЕЛА)
@@ -226,8 +240,11 @@ app.get('/get-staff', async (req, res) => {
                 };
             }
             // Если уровень позволяет — отдаем полные данные
-            return { ...member, isLocked: false };
-        });
+            return { 
+    ...member, 
+    display_name: member.name, // Копируем для фронтенда
+    is_restricted: false 
+};
 
         console.log(`[SYSTEM] Запрос досье. Уровень доступа: ${userLevel}`);
         res.json(safeData);
@@ -450,6 +467,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
