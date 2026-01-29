@@ -189,16 +189,39 @@ app.post('/send-report', async (req, res) => {
 // Эндпоинт для ARCHIVE_EXPLORER (тянет данные из таблицы игроков)
 app.get('/get-staff', async (req, res) => {
     try {
-        // Мы намеренно обращаемся к таблице 'players', 
-        // но оставляем адрес '/get-staff' для совместимости с твоим HTML
+        // 1. Получаем уровень доступа из заголовка (по умолчанию 1, если гость)
+        const userLevel = parseInt(req.headers['x-access-level']) || 1;
+        
+        // 2. Тянем всех игроков
         const { data } = await sbGet('players', 'order=level.asc');
         
         if (!data) return res.json([]);
-        
-        console.log(`[SYSTEM] Загружено ${data.length} анкет из таблицы players`);
-        res.json(data);
+
+        // 3. ФИЛЬТРАЦИЯ ДАННЫХ
+        const safeData = data.map(member => {
+            const memberLevel = parseInt(member.level) || 1;
+
+            // Если уровень сотрудника выше уровня того, кто смотрит
+            if (userLevel < memberLevel) {
+                return {
+                    id: member.id,
+                    level: memberLevel,
+                    // Заменяем данные на заглушки прямо на сервере
+                    name: "CLASSIFIED",
+                    mc_name: "Steve", // Чтобы аватарка сменилась на Стива
+                    dept: "REDACTED",
+                    bio: "ACCESS_DENIED: НЕДОСТАТОЧНЫЙ УРОВЕНЬ ДОПУСКА.",
+                    isLocked: true // Пометка для фронтенда
+                };
+            }
+            // Если уровень позволяет — отдаем полные данные
+            return { ...member, isLocked: false };
+        });
+
+        console.log(`[SYSTEM] Запрос досье. Уровень доступа: ${userLevel}`);
+        res.json(safeData);
     } catch (e) {
-        console.error("❌ Ошибка загрузки данных игроков:", e.message);
+        console.error("❌ Ошибка загрузки:", e.message);
         res.status(500).json({ error: "DB_FETCH_FAILED" });
     }
 });
@@ -416,6 +439,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
