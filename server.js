@@ -143,13 +143,24 @@ app.post('/delete-staff', async (req, res) => {
 app.get('/status', (req, res) => res.json(systemStatus));
 // Эндпоинт для списка аномалий
 app.get('/get-anomalies', async (req, res) => {
-    try {
-        const { data } = await sbGet('anomalies', 'order=id.asc');
-        res.json(data);
-    } catch (e) { 
-        console.error("Ошибка аномалий:", e.message);
-        res.status(500).json([]); 
-    }
+    const userLvl = parseInt(req.headers['x-access-level']) || 0;
+    const { data } = await sbGet('anomalies', 'order=id.asc'); // Твоя функция запроса к Supabase
+
+    const safeData = data.map(obj => {
+        if (userLvl < obj.lvl) {
+            return {
+                id: obj.id,
+                lvl: obj.lvl,
+                code: "CLASSIFIED",
+                class: "critical",
+                proc: "[ДАННЫЕ УДАЛЕНЫ]",
+                desc: "ДОСТУП ЗАПРЕЩЕН",
+                is_restricted: true
+            };
+        }
+        return { ...obj, is_restricted: false };
+    });
+    res.json(safeData);
 });
 
 // Эндпоинт для досье игроков (модуль ЛИЧНЫЕ ДЕЛА)
@@ -439,6 +450,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
