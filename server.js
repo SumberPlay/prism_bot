@@ -204,9 +204,18 @@ app.get('/get-staff', async (req, res) => {
 });
 app.get('/get-archive', async (req, res) => {
     try {
-        const { data } = await sbGet('archive', 'order=id.desc');
+        // Получаем уровень допуска из заголовков запроса
+        const userLevel = parseInt(req.headers['x-access-level']) || 1;
+        
+        // Запрашиваем у Supabase только те записи, уровень которых <= уровню пользователя
+        // Используем фильтр .lte (Less Than or Equal)
+        const { data } = await sbGet('archive', `level=lte.${userLevel}&order=id.desc`);
+        
         res.json(data);
-    } catch (e) { res.status(500).json([]); }
+    } catch (e) { 
+        console.error(e);
+        res.status(500).json([]); 
+    }
 });
 
 // --- ЛОГИКА ТЕЛЕГРАМ-БОТА ---
@@ -407,6 +416,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
