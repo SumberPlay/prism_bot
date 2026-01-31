@@ -247,14 +247,6 @@ app.get('/get-staff', async (req, res) => {
         res.status(500).json({ error: "DB_FETCH_FAILED" });
     }
 });
-
-        console.log(`[SYSTEM] Запрос досье. Уровень доступа: ${userLevel}`);
-        res.json(safeData);
-    } catch (e) {
-        console.error("❌ Ошибка загрузки:", e.message);
-        res.status(500).json({ error: "DB_FETCH_FAILED" });
-    }
-});
 app.get('/get-archive', async (req, res) => {
     try {
         // Получаем уровень допуска из заголовков запроса
@@ -466,6 +458,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
