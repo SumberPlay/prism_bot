@@ -293,45 +293,48 @@ bot.on('text', async (ctx, next) => {
     }
 
     // 2. Пошаговые формы (объекты)
+    // 2. Пошаговые формы (объекты)
     if (typeof state === 'object') {
 
-    // Логика создания записи в архив
-    if (state.step === 'TITLE') {
-        userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
-        return ctx.reply("Укажите уровень секретности (1-5):");
-    } 
-    
-    else if (state.step === 'LVL') {
-        const level = parseInt(ctx.message.text);
-        if (isNaN(level) || level < 1 || level > 5) return ctx.reply("Ошибка. Введите число от 1 до 5:");
+        // Логика создания записи в архив
+        if (state.step === 'TITLE') {
+            userStates.set(ctx.from.id, { ...state, step: 'LVL', title: ctx.message.text });
+            return ctx.reply("Укажите уровень секретности (1-5):");
+        } 
         
-        userStates.set(ctx.from.id, { ...state, step: 'TEXT', lvl: level });
-        return ctx.reply("Введите основной текст протокола:");
-    } 
-    
-    else if (state.step === 'TEXT') {
-        try {
-            const newEntry = {
-                title: state.title,
-                level: state.lvl,
-                content: ctx.message.text,
-                date: new Date().toLocaleDateString('ru-RU')
-            };
-
-            await axios.post(`${getFullSbUrl()}/archive`, newEntry, { headers: SB_HEADERS });
+        else if (state.step === 'LVL') {
+            const level = parseInt(ctx.message.text);
+            if (isNaN(level) || level < 1 || level > 5) return ctx.reply("Ошибка. Введите число от 1 до 5:");
             
-            ctx.reply("✅ ПРОТОКОЛ УСПЕШНО ВНЕСЕН В РЕЕСТР", mainMenu);
-        } catch (e) {
-            console.error("Save Error:", e.response?.data || e.message);
-            ctx.reply("❌ ОШИБКА ЗАПИСИ: Проверьте структуру таблицы 'archive'", mainMenu);
+            userStates.set(ctx.from.id, { ...state, step: 'TEXT', lvl: level });
+            return ctx.reply("Введите основной текст протокола:");
+        } 
+        
+        else if (state.step === 'TEXT') {
+            try {
+                const newEntry = {
+                    title: state.title,
+                    level: state.lvl,
+                    content: ctx.message.text,
+                    date: new Date().toLocaleDateString('ru-RU')
+                };
+
+                await axios.post(`${getFullSbUrl()}/archive`, newEntry, { headers: SB_HEADERS });
+                ctx.reply("✅ ПРОТОКОЛ УСПЕШНО ВНЕСЕН В РЕЕСТР", mainMenu);
+            } catch (e) {
+                console.error("Save Error:", e.response?.data || e.message);
+                ctx.reply("❌ ОШИБКА ЗАПИСИ: Проверьте структуру таблицы 'archive'", mainMenu);
+            }
+            userStates.delete(ctx.from.id); // Сбрасываем состояние
         }
-        userStates.delete(ctx.from.id); // Сбрасываем состояние
-    }
+
         // Создание задачи сотруднику
         else if (state.step === 'TASK_USER') {
             userStates.set(ctx.from.id, { ...state, step: 'TASK_TEXT', targetId: ctx.message.text.toUpperCase() });
             return ctx.reply(`Введите текст директивы для ${ctx.message.text}:`);
-        } else if (state.step === 'TASK_TEXT') {
+        } 
+        
+        else if (state.step === 'TASK_TEXT') {
             try {
                 await axios.post(`${getFullSbUrl()}/staff_tasks`, {
                     staff_id: state.targetId,
@@ -339,11 +342,13 @@ bot.on('text', async (ctx, next) => {
                     is_done: false
                 }, { headers: SB_HEADERS });
                 ctx.reply(`✅ Директива для ${state.targetId} внесена.`, mainMenu);
-            } catch (e) { ctx.reply("❌ Ошибка. Проверьте ID."); }
+            } catch (e) { 
+                ctx.reply("❌ Ошибка. Проверьте ID."); 
+            }
             userStates.delete(ctx.from.id);
         }
-    }
-});
+    } // <-- ВОТ ЭТОЙ СКОБКИ НЕ ХВАТАЛО (Закрывает if (typeof state === 'object'))
+}); // Закрывает bot.on('text')
 
 // Кнопки меню
 bot.hears('🔴 RED CODE', (ctx) => {
@@ -467,6 +472,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
