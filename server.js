@@ -35,7 +35,32 @@ const sbGet = async (table, params = "") => {
 const getFullSbUrl = () => SB_URL.includes('/rest/v1') ? SB_URL : `${SB_URL}/rest/v1`;
 
 // --- API МАРШРУТЫ (ДЛЯ САЙТА) ---
+const util = require('minecraft-server-util');
 
+app.get('/mc-status', async (req, res) => {
+    try {
+        // Укажи IP и порт своего сервера
+        const result = await util.status('oufdsfjdlnsfdywoeyrdn.bliink.fun', 25565);
+        
+        // Преобразуем список игроков в объект для твоего терминала
+        const onlinePlayers = {};
+        if (result.players.sample) {
+            result.players.sample.forEach(p => {
+                onlinePlayers[p.name] = "ОБЪЕКТ В СЕТИ";
+            });
+        }
+
+        res.json({
+            online: true,
+            onlinePlayers: onlinePlayers, // Именно это ищет твой HTML-код
+            version: result.version.name,
+            current: result.players.online
+        });
+    } catch (e) {
+        console.error("MC_STATUS_ERROR:", e.message);
+        res.json({ online: false, onlinePlayers: {} });
+    }
+});
 app.get('/', (req, res) => res.send('<h1>P.R.I.S.M. API CORE</h1><p>Status: ONLINE</p>'));
 // Эндпоинт для удаления рапорта из базы данных
 
@@ -458,6 +483,7 @@ bot.action(/^del_(.+)$/, async (ctx) => {
 // --- ЗАПУСК ---
 bot.launch().then(() => console.log("BOT DEPLOYED"));
 app.listen(process.env.PORT || 10000, () => console.log("P.R.I.S.M. CORE ONLINE"));
+
 
 
 
